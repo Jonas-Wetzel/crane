@@ -8,6 +8,7 @@
 #include <utility>
 #include <variant>
 
+enum class Sym;
 /// Regression test (now fixed). This mirrors theories/Parser/Defs.v's
 /// concat_tuple/rev_tuple family verbatim (same tactic-built
 /// dependent-case-split style, same

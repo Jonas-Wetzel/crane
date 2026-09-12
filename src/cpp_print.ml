@@ -3408,6 +3408,17 @@ let register_forward_struct_decl ~name ~tparams ~cstr =
       ++ str ";" )
       :: !forward_struct_decls
 
+(** Record an opaque declaration for a scoped enum about to be rendered at C++
+    global scope.  A module struct can be emitted before an enum a later module
+    pulled up to global scope, so a member declaration may name the enum ahead
+    of its definition.  [enum class E;] is a complete type -- a scoped enum has
+    a fixed underlying type -- so replaying it in the header prologue is enough
+    for those members, and the definition still follows in its own place. *)
+let register_forward_enum_decl ~name =
+  if not (!render_ctx).rc_in_struct then
+    forward_struct_decls :=
+      (str "enum class " ++ name ++ str ";") :: !forward_struct_decls
+
 (** Render a doc comment as [///]-prefixed lines followed by a newline, or
     [mt ()] if no comment is registered for [name].  This is the single lookup
     point used by field, constructor-struct, and enum-value printers.
@@ -4218,6 +4229,7 @@ and pp_cpp_decl_raw env (settled : Cpp_erasure.settled) =
           ++ str "  " ++ Id.print id )
         (List.combine ctors rocq_names)
     in
+    register_forward_enum_decl ~name:struct_name;
     str "enum class "
     ++ struct_name
     ++ str " {"

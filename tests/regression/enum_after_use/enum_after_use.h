@@ -8,6 +8,8 @@
 #include <utility>
 #include <variant>
 
+enum class Comparison;
+
 struct Nat {
   struct nat {
     // TYPES

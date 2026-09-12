@@ -10,6 +10,7 @@ using namespace std::string_literals;
 struct NatEq;
 struct NatOrd;
 struct NatShow;
+enum class Ordering;
 template <typename I, typename A>
 concept Eq = requires {
   { I::eqb(std::declval<A>(), std::declval<A>()) } -> std::convertible_to<bool>;

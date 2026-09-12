@@ -8,6 +8,7 @@
 #include <utility>
 #include <variant>
 
+enum class Bool0;
 struct Uint;
 struct Ascii;
 struct String;

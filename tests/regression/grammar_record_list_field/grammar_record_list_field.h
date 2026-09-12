@@ -10,6 +10,7 @@
 
 template <typename A, typename P> struct SigT;
 struct elt;
+enum class Nonterminal;
 struct rec;
 struct Symbol;
 

@@ -11,6 +11,7 @@
 #include <variant>
 
 template <typename A> struct List;
+enum class Sym;
 
 template <typename A> struct List {
   // TYPES

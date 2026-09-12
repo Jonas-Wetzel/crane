@@ -8,6 +8,7 @@
 #include <utility>
 #include <variant>
 
+enum class Concrete_symbol;
 /// Reproduces (now fixed) a compile-time failure in the extracted C++ parser
 /// core that appeared after the grammar_pairlist_nil_cons_mismatch fix landed:
 ///

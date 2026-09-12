@@ -13,6 +13,7 @@
 
 namespace DequeActionMismatch {
 
+enum class Tag;
 enum class Tag { TAGLIST, TAGNAT };
 using sem_ty = std::any;
 using action = Specif::SigT<Tag, std::function<sem_ty(sem_ty)>>;

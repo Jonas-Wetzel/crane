@@ -5,6 +5,7 @@
 #include <any>
 #include <functional>
 
+enum class Bool0;
 enum class Bool0 { TRUE_, FALSE_ };
 
 struct HigherRankArgumentProbe {

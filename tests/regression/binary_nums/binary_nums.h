@@ -8,6 +8,7 @@
 #include <utility>
 #include <variant>
 
+enum class Comparison;
 struct Positive;
 struct N;
 struct Z;

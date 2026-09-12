@@ -11,6 +11,7 @@
 #include <variant>
 
 template <typename A> struct List;
+enum class Comparison;
 struct Positive;
 struct Z;
 struct Q;

@@ -3,6 +3,7 @@
 
 #include <variant>
 
+enum class Unit;
 enum class Unit { TT };
 
 struct Lib {

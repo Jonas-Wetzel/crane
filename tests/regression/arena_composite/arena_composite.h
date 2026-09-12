@@ -11,6 +11,7 @@
 #include "small_vector.h"
 #include <atomic>
 
+enum class Bool0;
 struct Nat;
 enum class Bool0 { TRUE_, FALSE_ };
 

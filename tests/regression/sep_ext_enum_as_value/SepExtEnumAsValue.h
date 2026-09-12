@@ -8,6 +8,7 @@
 
 namespace SepExtEnumAsValue {
 
+enum class Color;
 enum class Color { RED, GREEN, BLUE };
 template <typename M>
 concept ColorParam = requires {

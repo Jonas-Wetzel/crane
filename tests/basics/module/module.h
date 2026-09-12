@@ -9,6 +9,7 @@
 #include <utility>
 #include <variant>
 
+enum class Comparison;
 enum class Comparison { EQ, LT, GT };
 
 struct Nat {

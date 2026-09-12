@@ -8578,3 +8578,14 @@
   (alias runtest)
   (deps dict_ctor_field.t.exe)
   (action (run ./dict_ctor_field.t.exe))))
+
+(subdir enum_after_use
+ (rule
+  (targets enum_after_use.t.exe)
+  (deps EnumAfterUse.vo enum_after_use.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} enum_after_use.t.exe enum_after_use.cpp enum_after_use.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps enum_after_use.t.exe)
+  (action (run ./enum_after_use.t.exe))))

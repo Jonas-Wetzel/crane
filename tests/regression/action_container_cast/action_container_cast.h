@@ -11,10 +11,13 @@
 #include <utility>
 #include <variant>
 
+enum class Unit;
+enum class Bool0;
 struct Nat;
 template <typename A, typename B> struct Prod;
 template <typename A, typename P> struct SigT;
 struct R;
+enum class Nonterminal;
 struct Symbol;
 enum class Unit { TT };
 enum class Bool0 { TRUE_, FALSE_ };

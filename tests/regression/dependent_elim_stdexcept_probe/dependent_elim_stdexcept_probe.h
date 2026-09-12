@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <utility>
 
+enum class Unit;
+enum class Bool0;
 enum class Unit { TT };
 enum class Bool0 { TRUE_, FALSE_ };
 

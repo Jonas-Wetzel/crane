@@ -4,6 +4,7 @@
 #include <concepts>
 #include <utility>
 
+enum class Bool0;
 enum class Bool0 { TRUE_, FALSE_ };
 
 struct Datatypes {

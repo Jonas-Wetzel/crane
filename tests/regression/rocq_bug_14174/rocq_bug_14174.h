@@ -12,6 +12,7 @@
 #include <utility>
 #include <variant>
 
+enum class Bool0;
 struct Nat;
 template <typename A> struct Option;
 template <typename A, typename B> struct Prod;
@@ -19,6 +20,7 @@ template <typename A> struct Sig;
 template <typename A> struct Sig2;
 template <typename A, typename P> struct SigT;
 template <typename A, typename P, typename Q> struct SigT2;
+enum class Sumbool;
 template <typename A> struct Sumor;
 enum class Bool0 { TRUE_, FALSE_ };
 

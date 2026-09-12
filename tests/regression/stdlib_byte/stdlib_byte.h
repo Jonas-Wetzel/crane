@@ -3,6 +3,7 @@
 
 #include <utility>
 
+enum class Byte;
 enum class Byte {
   X00,
   X01,

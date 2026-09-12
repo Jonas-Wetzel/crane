@@ -11,6 +11,8 @@
 #include <utility>
 #include <variant>
 
+enum class Unit;
+enum class Bool0;
 struct Nat;
 enum class Unit { TT };
 enum class Bool0 { TRUE_, FALSE_ };

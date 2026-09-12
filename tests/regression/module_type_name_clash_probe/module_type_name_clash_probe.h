@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <variant>
 
+enum class Bool0;
 enum class Bool0 { TRUE_, FALSE_ };
 
 struct ModuleTypeNameClashProbe {

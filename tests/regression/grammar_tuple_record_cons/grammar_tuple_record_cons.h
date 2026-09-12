@@ -10,6 +10,7 @@
 
 template <typename A, typename P> struct SigT;
 struct rgb;
+enum class Symbol;
 
 template <typename A, typename P> struct SigT {
   // DATA

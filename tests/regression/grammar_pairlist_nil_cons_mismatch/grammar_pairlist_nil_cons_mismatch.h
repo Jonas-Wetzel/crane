@@ -15,6 +15,8 @@ template <typename A, typename P> struct SigT;
 struct Ascii;
 struct String;
 struct val;
+enum class Terminal;
+enum class Nonterminal;
 struct Symbol;
 
 template <typename A, typename P> struct SigT {

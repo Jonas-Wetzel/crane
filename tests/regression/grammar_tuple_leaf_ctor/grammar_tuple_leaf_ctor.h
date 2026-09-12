@@ -13,6 +13,7 @@
 
 template <typename A> struct List;
 template <typename A, typename P> struct SigT;
+enum class Terminal;
 struct Val;
 struct Symbol;
 

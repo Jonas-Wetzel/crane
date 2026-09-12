@@ -8,7 +8,17 @@
 
 #include <cassert>
 
+static int to_int(const Nat::nat &n) {
+  int k = 0;
+  const Nat::nat *p = &n;
+  while (const auto *s = std::get_if<Nat::nat::S>(&p->v())) {
+    ++k;
+    p = s->a0.get();
+  }
+  return k;
+}
+
 int main() {
-  assert(EnumAfterUse::ex.to_int() == 3);
+  assert(to_int(EnumAfterUse::ex) == 3);
   return 0;
 }

@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 
+enum class Player;
 enum class Player { BLACK, WHITE };
 using cell = std::optional<Player>;
 

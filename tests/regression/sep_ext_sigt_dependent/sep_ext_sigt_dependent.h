@@ -6,6 +6,7 @@
 #include <variant>
 
 template <typename A, typename P> struct SigT;
+enum class Tag;
 
 template <typename A, typename P> struct SigT {
   // DATA

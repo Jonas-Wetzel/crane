@@ -8,6 +8,7 @@
 #include <variant>
 
 struct Nat;
+enum class Comparison;
 template <typename X> struct Compare;
 
 struct Nat {

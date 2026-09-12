@@ -14,6 +14,7 @@
 
 template <typename A, typename P> struct SigT;
 struct Val;
+enum class Nonterminal;
 struct Symbol;
 
 template <typename A, typename P> struct SigT {

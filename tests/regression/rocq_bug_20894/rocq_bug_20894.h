@@ -13,6 +13,7 @@
 #include <utility>
 #include <variant>
 
+enum class Unit;
 template <typename A> struct List;
 enum class Unit { TT };
 
