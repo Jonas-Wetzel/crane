@@ -184,17 +184,19 @@ struct MapOverPartialApp {
     return f(g(x));
   }
 
-  static inline const List<std::function<Nat(Nat)>> ex =
-      List<std::function<Nat(Nat)>>::cons(
-          [](Nat x) { return Nat::s(x); },
-          List<std::function<Nat(Nat)>>::cons(
-              [](Nat x) { return Nat::s(x); },
-              List<std::function<Nat(Nat)>>::nil()))
-          .template map<std::function<Nat(Nat)>>(
-              [](std::function<Nat(Nat)> _x0, Nat _x1) -> Nat {
-                return comp<Nat, Nat, Nat>([](Nat x) { return Nat::s(x); }, _x0,
-                                           _x1);
-              });
+  static inline const List<std::function<Nat(Nat)>> ex = []() {
+    return List<std::function<Nat(Nat)>>::cons(
+               [](Nat x) { return Nat::s(x); },
+               List<std::function<Nat(Nat)>>::cons(
+                   [](Nat x) { return Nat::s(x); },
+                   List<std::function<Nat(Nat)>>::nil()))
+        .template map<std::function<Nat(Nat)>>([](std::function<Nat(Nat)> _x0) {
+          return [=](Nat _x1) mutable -> Nat {
+            return comp<Nat, Nat, Nat>([](Nat x) { return Nat::s(x); }, _x0,
+                                       _x1);
+          };
+        });
+  }();
   static inline const Nat run = []() {
     auto &&_sv = ex;
     if (std::holds_alternative<typename List<std::function<Nat(Nat)>>::Nil>(

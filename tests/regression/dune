@@ -8644,3 +8644,14 @@
   (alias runtest)
   (deps record_with_type_field.t.exe)
   (action (run ./record_with_type_field.t.exe))))
+
+(subdir map_over_partial_app
+ (rule
+  (targets map_over_partial_app.t.exe)
+  (deps MapOverPartialApp.vo map_over_partial_app.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} map_over_partial_app.t.exe map_over_partial_app.cpp map_over_partial_app.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps map_over_partial_app.t.exe)
+  (action (run ./map_over_partial_app.t.exe))))

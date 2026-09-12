@@ -5144,7 +5144,10 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
     in
     gen_expr ~slot env (MLcase (typ, scrut, [|(ids, rty, pat, new_body)|]))
   | MLapp (f, args) ->
-    let result = eta_fun ~slot env f args in
+    (* A partial application is a callable this position may expect at a
+       different currying than the callee's own arrows give it, so the slot's
+       type travels with it. *)
+    let result = eta_fun ?expected_ty ~slot env f args in
     (* A callee whose result is only pinned down by a type index hands back a
        [std::any] (see {!result_is_index_only_tvar}); recover it at the type
        this position expects. *)
@@ -8286,6 +8289,10 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
            type variable belong to the element type the callee is generic in,
            not to the callable it expects. *)
         | MLglob _ -> param_expected_cpp_ty fn_param_ml_tys_orig
+        (* A partial application is a callable built here rather than named,
+           and reaches the slot at the arity the callee declared the parameter
+           at, for the same reason a lambda does. *)
+        | MLapp _ -> param_expected_at_declared_arity ()
         | _ -> None ) )
       in
       let arg_expected_ml_ty =
