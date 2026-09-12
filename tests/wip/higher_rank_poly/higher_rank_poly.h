@@ -75,8 +75,8 @@ public:
 /// emits a bogus body for the identity lambda passed in.
 struct HigherRankPoly {
   static std::pair<Nat, bool> apply_id(std::function<std::any(std::any)> f);
-  static inline const std::pair<Nat, bool> ex = apply_id(crane_erase_fn(
-      [](const auto &x) { return crane_any_cast<std::pair<Nat, bool>>(x); }));
+  static inline const std::pair<Nat, bool> ex =
+      apply_id(crane_erase_fn([](const auto &x) { return x; }));
 };
 
 #endif // INCLUDED_HIGHER_RANK_POLY

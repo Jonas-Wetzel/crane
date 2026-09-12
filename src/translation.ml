@@ -5318,9 +5318,26 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
            lambda's parameters. *)
         (* A lambda stored into an erased slot IS the value in that slot, so
            what it returns is erased too and its body inherits [deep_erase]. *)
+        (* A [return] inside this lambda returns from the lambda, not from the
+           enclosing function, so the body must not inherit the enclosing
+           function's return type.  The slot this lambda flows into is the only
+           thing that can say what the body returns.
+           When the slot declares no signature at all -- a deduced [F0 &&]
+           callback parameter, say -- there is nothing better to say, so the
+           context is left alone.  A [void] codomain says nothing either: a
+           unit-returning lambda spells its result [std::monostate] or nothing
+           at all depending on what consumes it, which is a decision for the
+           body's own generation. *)
+        let with_lam_return_type f =
+          match Option.map (unfold_cpp_typedef env) expected_ty with
+          | Some (Tfun (_, cod)) when cod <> Tvoid ->
+            with_cpp_return_type (Some cod) f
+          | _ -> f ()
+        in
         let body_stmts =
-          gen_stmts ~slot:{slot with expected_ml_ty = body_expected_ml_ty} env
-            (fun x -> Sreturn (Some x)) a
+          with_lam_return_type (fun () ->
+            gen_stmts ~slot:{slot with expected_ml_ty = body_expected_ml_ty} env
+              (fun x -> Sreturn (Some x)) a )
         in
         let body_stmts =
           List.fold_left
