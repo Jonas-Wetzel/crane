@@ -37,7 +37,7 @@ struct TodoDependentFieldAlias {
         [](uint64_t _x0, uint64_t _x1) -> uint64_t {
       return pick_op<nat_magma>(_x0, _x1);
     };
-    return alias(UINT64_C(2), UINT64_C(3));
+    return std::any_cast<uint64_t>(alias(UINT64_C(2), UINT64_C(3)));
   }();
 };
 

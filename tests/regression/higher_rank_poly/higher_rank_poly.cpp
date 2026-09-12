@@ -5,5 +5,6 @@
 /// emits a bogus body for the identity lambda passed in.
 std::pair<Nat, bool>
 HigherRankPoly::apply_id(std::function<std::any(std::any)> f) {
-  return std::make_pair(f(Nat::s(Nat::o())), f(true));
+  return std::make_pair(std::any_cast<Nat>(f(Nat::s(Nat::o()))),
+                        std::any_cast<bool>(f(true)));
 }

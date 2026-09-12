@@ -159,8 +159,10 @@ struct ErasedTypeFieldLambda {
   static uint64_t weigh(const slot &s);
   static inline const List<slot> slots = List<slot>::cons(
       slot{List<std::pair<std::any, std::function<uint64_t(std::any)>>>::cons(
-          std::make_pair(UINT64_C(1), crane_erase_fn<uint64_t>(
-                                          [](const auto &x) { return x; })),
+          std::make_pair(UINT64_C(1),
+                         crane_erase_fn<uint64_t>([](const auto &x) {
+                           return std::any_cast<uint64_t>(x);
+                         })),
           List<std::pair<std::any, std::function<uint64_t(std::any)>>>::cons(
               std::make_pair(
                   UINT64_C(2), crane_erase_fn<uint64_t>([](const auto &x) {

@@ -5136,11 +5136,37 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
         | _ -> false )
       | _ -> false
     in
+    (* A binder whose declared C++ type boxes its result -- a rank-2 parameter
+       typed [std::function<std::any(std::any)>], say -- hands back a box
+       however the term's ML type reads.  The assignment made where the binder
+       was bound is the authority on that; only a saturated call reaches the
+       codomain it names. *)
+    let binder_result_is_boxed =
+      match f with
+      | MLrel i ->
+        ( match
+            Option.map
+              (fun t -> unfold_cpp_typedef env (strip_cpp_ref_const t))
+              (binder_cpp_type_or_derive env i)
+          with
+        | Some (Tfun (doms, cod)) ->
+          let n_runtime =
+            List.length
+              (List.filter (fun a -> not (Mlutil.isMLdummy (strip_magic a))) args)
+          in
+          prints_as_any cod && List.length doms = n_runtime
+        | _ -> false )
+      | _ -> false
+    in
     let result =
-      match (callee_ty, expected_ty) with
-      | Some ty, Some into
-        when (result_is_index_only_tvar ty || alias_result_is_boxed ty)
-             && not (prints_as_any into || contains_tvar into) ->
+      match expected_ty with
+      | Some into
+        when (not (prints_as_any into || contains_tvar into))
+             && ( binder_result_is_boxed
+                || match callee_ty with
+                   | Some ty ->
+                     result_is_index_only_tvar ty || alias_result_is_boxed ty
+                   | None -> false ) ->
         coerce ~from:Tany ~into result
       | _ -> result
     in

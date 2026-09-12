@@ -156,16 +156,6 @@
   (deps erased_method_receiver.t.exe)
   (action (run ./erased_method_receiver.t.exe))))
 
-(subdir higher_rank_poly
- (rule
-  (targets higher_rank_poly.t.exe)
-  (deps HigherRankPoly.vo higher_rank_poly.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} higher_rank_poly.t.exe higher_rank_poly.cpp higher_rank_poly.t.cpp)))
- (rule
-  (alias runtest)
-  (deps higher_rank_poly.t.exe)
-  (action (run ./higher_rank_poly.t.exe))))
 
 (subdir hkt_instance_arg_order
  (rule

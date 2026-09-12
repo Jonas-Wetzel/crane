@@ -9,8 +9,18 @@
 
 #include <cassert>
 
+static int to_int(const Nat &n) {
+  int k = 0;
+  const Nat *p = &n;
+  while (const auto *s = std::get_if<Nat::S>(&p->v())) {
+    ++k;
+    p = s->a0.get();
+  }
+  return k;
+}
+
 int main() {
-  assert(HigherRankPoly::ex.first.to_int() == 1);
+  assert(to_int(HigherRankPoly::ex.first) == 1);
   assert(HigherRankPoly::ex.second == true);
   return 0;
 }
