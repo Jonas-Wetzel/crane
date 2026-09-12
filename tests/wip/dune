@@ -134,17 +134,6 @@
   (action (run ./curried_tvar_instantiation.t.exe))))
 
 
-(subdir erased_index_fun_type
- (rule
-  (targets erased_index_fun_type.t.exe)
-  (deps ErasedIndexFunType.vo erased_index_fun_type.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} erased_index_fun_type.t.exe erased_index_fun_type.cpp erased_index_fun_type.t.cpp)))
- (rule
-  (alias runtest)
-  (deps erased_index_fun_type.t.exe)
-  (action (run ./erased_index_fun_type.t.exe))))
-
 (subdir erased_method_receiver
  (rule
   (targets erased_method_receiver.t.exe)

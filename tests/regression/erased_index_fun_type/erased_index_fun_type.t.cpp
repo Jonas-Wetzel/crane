@@ -9,6 +9,12 @@
 #include <cassert>
 
 int main() {
-  assert(ErasedIndexFunType::run.to_int() == 5);
+  int k = 0;
+  const Nat *p = &ErasedIndexFunType::run;
+  while (const auto *s = std::get_if<Nat::S>(&p->v())) {
+    ++k;
+    p = s->a0.get();
+  }
+  assert(k == 0); // dflt (TF ...) is [fun _ => dflt TN], i.e. [fun _ => 0]
   return 0;
 }

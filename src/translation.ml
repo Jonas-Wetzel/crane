@@ -8821,9 +8821,16 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
             | _ -> false )
           | None -> false
         in
+        (* The callee hands back a box, so the excess args are applied to a
+           [std::any] and have to go through the erased calling convention.
+           A result pinned down only by a type index is written [std::any] in
+           the declaration however this call site instantiates it, so it
+           counts here just as it does in {!gen_expr}'s [MLapp] case. *)
         let cod_is_erased =
           match find_type_opt id with
-          | Some ml_ty -> ml_erases_to_box env (ml_codomain ml_ty)
+          | Some ml_ty ->
+            ml_erases_to_box env (ml_codomain ml_ty)
+            || result_is_index_only_tvar ml_ty
           | None -> false
         in
         (* The codomain as this call site instantiates it: that is the type
@@ -8868,7 +8875,19 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
         in
         if ret_is_chainable then
           let excess = List.map (gen_expr ~slot env) excess_args in
-          if cod_is_erased then apply_erased_callee base excess
+          if cod_is_erased then
+            let applied = apply_erased_callee base excess in
+            (* Args applied to a box come back as a box; the codomain at this
+               call's instantiation is what says what that box holds. *)
+            match
+              Option.map
+                (fun c ->
+                  cpp_of_ml env (ml_drop_arrows (List.length excess) c) )
+                cod_inst
+            with
+            | Some into when not (prints_as_any into || contains_tvar into) ->
+              coerce ~from:Tany ~into applied
+            | _ -> applied
           else chain_excess base cod_inst excess
         else
           CPPabort ("untranslatable curried proof term", abort_ty expected_ty) )
