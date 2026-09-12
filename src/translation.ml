@@ -5955,7 +5955,7 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
         ( match into with
         | Some into -> coerce ~from ~into cglob
         | None -> cglob )
-      | _ -> curry_to_expected env ?expected_ty x cglob )
+      | _ -> curry_to_expected env ?expected_ty ~tys x cglob )
   | MLcons (_ty, r, _ts)
     when match r with
          | GlobRef.ConstructRef ((kn, i), _) ->
@@ -7759,10 +7759,18 @@ and eta_expand_to_expected ?expected_ty ~ml_arity ~returns_a_lambda ~arity f =
     {v [](std::function<uint64_t(uint64_t)> _ec0, uint64_t _ec1) { return f(_ec0, _ec1); } v}
 
     Returns [cglob] unchanged when the declaration is already a value. *)
-and curry_to_expected env ?expected_ty x cglob =
+and curry_to_expected env ?expected_ty ?(tys = []) x cglob =
   let decl_dom =
     match find_type_opt x with
     | Some ml_ty -> (
+      (* The eta-parameters are spelled here, in the caller's scope, so the
+         callee's own type variables must not survive into them: this call
+         site's type arguments are what they stand for. *)
+      let ml_ty =
+        match tys with
+        | [] -> ml_ty
+        | _ -> ( try Mlutil.type_subst_list tys ml_ty with _ -> ml_ty )
+      in
       match
         cpp_of_ml env ml_ty
       with

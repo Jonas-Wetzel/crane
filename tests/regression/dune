@@ -8622,3 +8622,14 @@
   (alias runtest)
   (deps erased_method_receiver.t.exe)
   (action (run ./erased_method_receiver.t.exe))))
+
+(subdir poly_fn_as_arg_tvar_leak
+ (rule
+  (targets poly_fn_as_arg_tvar_leak.t.exe)
+  (deps PolyFnAsArgTvarLeak.vo poly_fn_as_arg_tvar_leak.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} poly_fn_as_arg_tvar_leak.t.exe poly_fn_as_arg_tvar_leak.cpp poly_fn_as_arg_tvar_leak.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps poly_fn_as_arg_tvar_leak.t.exe)
+  (action (run ./poly_fn_as_arg_tvar_leak.t.exe))))
