@@ -8611,3 +8611,14 @@
   (alias runtest)
   (deps erased_index_fun_type.t.exe)
   (action (run ./erased_index_fun_type.t.exe))))
+
+(subdir erased_method_receiver
+ (rule
+  (targets erased_method_receiver.t.exe)
+  (deps ErasedMethodReceiver.vo erased_method_receiver.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} erased_method_receiver.t.exe erased_method_receiver.cpp erased_method_receiver.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps erased_method_receiver.t.exe)
+  (action (run ./erased_method_receiver.t.exe))))

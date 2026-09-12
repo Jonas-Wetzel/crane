@@ -3159,6 +3159,46 @@ and binder_cpp_type_or_derive env i =
   | Some _ as t -> t
   | None -> Option.map (cpp_of_ml env) (get_env_type_opt i)
 
+(** Whether an application reads its result out of a value that carries
+    erasure.
+
+    An accessor's ML result type says nothing on its own: the second component
+    of a dependent pair is a bare type variable whatever the pair holds.  What
+    decides is the value being projected from -- a [SigT<std::any, std::any>]
+    hands back a box, a [SigT<List<uint64_t>, List<uint64_t>>] hands back a
+    list.  So the arguments are the evidence, and each is asked at whichever
+    is the better authority on its C++ type: the assignment made where a
+    binder was bound, or the term's own ML type. *)
+and app_reads_erased_value env args =
+  let carries t =
+    Ml_type_util.has_erased_type_in_type (unfold_cpp_typedef env t)
+  in
+  (* A typeclass dictionary is not one of the values the result is read out
+     of: it is how the call states its type arguments, and C++ resolves the
+     result through it. *)
+  let is_dictionary a =
+    match infer_ml_body_type (strip_magic a) with
+    | Some ty -> (
+      match resolve_tmeta ty with
+      | Miniml.Tglob (r, _, _) -> Table.is_typeclass r
+      | _ -> false )
+    | None -> false
+  in
+  List.exists
+    (fun a ->
+      if is_dictionary a then false
+      else
+      match strip_magic a with
+      | MLrel i -> (
+        match binder_cpp_type_or_derive env i with
+        | Some t -> carries (strip_cpp_ref_const t)
+        | None -> false )
+      | a -> (
+        match infer_ml_body_type a with
+        | Some ty -> carries (cpp_of_ml env ty)
+        | None -> false ) )
+    args
+
 (** The C++ type a pattern match pinned down for the binder at de Bruijn index
     [i], if this branch pinned one.  A binding-site assignment is not an
     answer here: it says what the binder's ML type converts to, which for a
@@ -8317,6 +8357,45 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
         match List.nth_opt fn_param_ml_tys i with
         | Some param_ty -> erase_fn_arg_for_param env param_ty ml_arg expr
         | None -> expr
+      in
+      (* A methodified callee is spelled [recv.f(rest)], and [std::any] has no
+         members: unlike every other argument, the receiver cannot arrive as a
+         box at all.  What says that it does is the declaration the receiver
+         came out of -- a method registered as returning [std::any] -- and the
+         parameter's type is what says what the box holds. *)
+      let expr =
+        let receiver_is_boxed =
+          (* The receiver's own ML type has to say it is gone -- a projection
+             out of a dependent pair is a bare type variable, and extraction
+             leaves a [Tdummy] behind. *)
+          ( match
+              Option.map (fun t -> cpp_of_ml env t)
+                (infer_ml_body_type (strip_magic ml_arg))
+            with
+          | Some t -> prints_as_any t
+          | None -> false )
+          &&
+          (* And it has to have come out of an accessor on a value that
+             carries erasure: a [SigT<std::any, std::any>] hands back a box, a
+             [SigT<List<uint64_t>, List<uint64_t>>] hands back a list.  A call
+             whose arguments are all concrete does not qualify however its ML
+             type reads -- a free template function's result is resolved by
+             the type arguments the call site states. *)
+          match strip_magic ml_arg with
+          | MLapp (g, rargs) -> (
+            match strip_magic g with
+            | MLglob _ -> app_reads_erased_value env rargs
+            | _ -> false )
+          | _ -> false
+        in
+        match Cpp_names.lookup_method_this_pos id with
+        | Some pos
+          when pos = i + List.length typeclass_ml_args && receiver_is_boxed -> (
+          match param_expected_cpp_ty fn_param_ml_tys with
+          | Some into when not (prints_as_any into) ->
+            coerce ~from:Tany ~into expr
+          | _ -> expr )
+        | _ -> expr
       in
       let expr =
         if param_tvar_erased then

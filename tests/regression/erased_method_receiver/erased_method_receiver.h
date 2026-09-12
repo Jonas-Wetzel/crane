@@ -202,7 +202,7 @@ struct ErasedMethodReceiver {
                                                     true, true, true, false),
                                       String::emptystring()));
 
-  static inline const Nat run = s.projT2().length();
+  static inline const Nat run = std::any_cast<String>(s.projT2()).length();
 };
 
 #endif // INCLUDED_ERASED_METHOD_RECEIVER
