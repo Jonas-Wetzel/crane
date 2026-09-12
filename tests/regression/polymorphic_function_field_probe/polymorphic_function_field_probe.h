@@ -1,6 +1,7 @@
 #ifndef INCLUDED_POLYMORPHIC_FUNCTION_FIELD_PROBE
 #define INCLUDED_POLYMORPHIC_FUNCTION_FIELD_PROBE
 
+#include "crane_fn.h"
 #include <any>
 #include <functional>
 
@@ -16,7 +17,8 @@ struct PolymorphicFunctionFieldProbe {
     return std::any_cast<T1>(p0.apply(x));
   }
 
-  static inline const poly p = poly{[](const auto &x) { return x; }};
+  static inline const poly p =
+      poly{crane_erase_fn<std::any>([](const auto &x) { return x; })};
   static inline const Bool0 sample_bool = apply<Bool0>(p, Bool0::TRUE_);
 };
 

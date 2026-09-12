@@ -36,6 +36,11 @@ type method_info = {
           when the registration site had no type to count from.  Consumers use
           it to build a lambda of the right shape when the method is passed
           around as a function value. *)
+  param_cpp_types : Minicpp.cpp_type list;
+      (** The C++ types the method's non-receiver parameters were declared at,
+          in declaration order; [[]] until the declaration is generated.  A
+          consumer that turns the method back into a function value needs them
+          to spell the forwarding lambda's parameters concretely. *)
 }
 
 (** A method candidate: (func_ref, body, type, this_pos). *)
@@ -380,6 +385,7 @@ let register_into
       returns_any = false;
       (* computed later by [compute_returns_any] *)
       arity;
+      param_cpp_types = [];
     }
 
 (** Register all eligible methods for a given eponymous type from a list of
@@ -1006,3 +1012,20 @@ let register_method_returns_any (reg : t) (func_ref : GlobRef.t) =
   | Some info ->
     Hashtbl.replace reg.methods func_ref {info with returns_any = true}
   | None -> ()
+
+(** Record the C++ types a registered method's non-receiver parameters were
+    declared at.  Called once the declaration is generated, which is where
+    those types are decided.  No-op if the function is not registered. *)
+let register_method_param_cpp_types (reg : t) (func_ref : GlobRef.t)
+    (tys : Minicpp.cpp_type list) =
+  match Hashtbl.find_opt reg.methods func_ref with
+  | Some info ->
+    Hashtbl.replace reg.methods func_ref {info with param_cpp_types = tys}
+  | None -> ()
+
+(** The C++ types of a registered method's non-receiver parameters, in
+    declaration order, or [[]] when they were never recorded. *)
+let lookup_method_param_cpp_types (reg : t) (func_ref : GlobRef.t) =
+  match Hashtbl.find_opt reg.methods func_ref with
+  | Some info -> info.param_cpp_types
+  | None -> []

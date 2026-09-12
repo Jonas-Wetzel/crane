@@ -370,6 +370,15 @@ val method_receiver_cpp_type :
     [bsl::any]. *)
 val register_method_returns_any : Names.GlobRef.t -> unit
 
+(** Record the C++ types of a registered method's non-receiver parameters, in
+    declaration order.  Called from declaration generation. *)
+val register_method_param_cpp_types :
+  Names.GlobRef.t -> Minicpp.cpp_type list -> unit
+
+(** The C++ types of a registered method's non-receiver parameters, or [[]] if
+    they were never recorded. *)
+val method_param_cpp_types : Names.GlobRef.t -> Minicpp.cpp_type list
+
 (** [true] if the method was marked by [register_method_returns_any]. *)
 val method_returns_any : Names.GlobRef.t -> bool
 

@@ -4489,14 +4489,14 @@ and coerce ?term ?from ~into expr =
           Cpp_erasure.converting_ctor Tany [adapted]
       else
         match into with
-        (* A slot that erased only its domain -- a record field whose Rocq type
-           is [dty -> nat] at a value-dependent [dty], so
+        (* A slot that erased its domain -- a record field whose Rocq type is
+           [dty -> nat] at a value-dependent [dty], so
            [std::function<uint64_t(std::any)>] -- does not accept a closure
            written at the concrete domain, nor a generic lambda (which has no
            signature to convert from).  It takes one through the same
-           [crane_erase_fn] adapter an erased parameter uses. *)
-        | Tfun (_, cod) when is_function_value && partially_erased_fun_ty into
-          ->
+           [crane_erase_fn] adapter an erased parameter uses, whether or not the
+           result erased along with the arguments. *)
+        | Tfun (_, cod) when is_function_value && erased_domain_fun_ty into ->
           wrap_crane_erase_fn ~ret_ty:cod expr
         (* The mirror image: a callable whose result erased -- a constant
            whose Rocq type hides its quantifier behind a type alias, or whose
@@ -7245,7 +7245,7 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
                    supplies the [crane_erase_fn] adapter. *)
                 let declared_ty = declared_field_cpp_ty ft in
                 let expr =
-                  if partially_erased_fun_ty declared_ty then
+                  if erased_domain_fun_ty declared_ty then
                     coerce ?term:(List.nth_opt ts i) ~into:declared_ty expr
                   else expr
                 in

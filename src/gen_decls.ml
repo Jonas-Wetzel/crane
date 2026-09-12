@@ -4210,6 +4210,10 @@ let gen_single_method name vars (func_ref, body, ty, this_pos) =
     if Id.Set.is_empty phantom_name_set then stmts
     else List.map strip_phantom_any_cast_stmt stmts
   in
+  (* The parameter types are decided here; the printer needs them when the
+     method is later passed around as a function value and has to be spelled as
+     a forwarding lambda. *)
+  Cpp_state.register_method_param_cpp_types func_ref (List.map snd params);
   ( Fmethod
       {
         mf_name = func_name;

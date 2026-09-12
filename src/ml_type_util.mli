@@ -181,6 +181,11 @@ val is_fully_erased_fun_ty : Minicpp.cpp_type -> bool
     result, so a closure reaching it needs the [crane_erase_fn] adapter. *)
 val partially_erased_fun_ty : Minicpp.cpp_type -> bool
 
+(** True of a function type that erased at least one argument, whichever way its
+    result went: the union of the two predicates above, and the condition under
+    which a closure needs the [crane_erase_fn] adapter to reach the slot. *)
+val erased_domain_fun_ty : Minicpp.cpp_type -> bool
+
 (** Whether a value of this type is known to live inside a [std::any], and so
     may be boxed into and [any_cast] out of.  Narrower than {!prints_as_any}:
     {!Minicpp.Topaque} prints as [std::any] but claims nothing about the

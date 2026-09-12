@@ -1267,11 +1267,33 @@ and pp_cpp_expr env args t =
          to accept every parameter and pass the non-receiver ones on -- calling
          it with none would not even name an overload. *)
       let names = List.init arity (fun i -> "_x" ^ string_of_int i) in
+      (* The non-receiver parameters get the types the method was declared at,
+         for the same reason the receiver does: a generic lambda has no
+         deducible signature, so nothing downstream can convert it to a
+         [std::function].  They are recorded in declaration order, so the
+         receiver's slot is not among them. *)
+      let declared = Cpp_state.method_param_cpp_types x in
+      (* A declared parameter carries however many qualifiers the declaration
+         gave it; the lambda spells its own, so they all come off first. *)
+      let rec unqualified = function
+        | Tref t | Tconst t -> unqualified t
+        | t -> t
+      in
+      let declared_param i name =
+        let i = if i > this_pos then i - 1 else i in
+        match Option.map unqualified (List.nth_opt declared i) with
+        | Some ty when not (Ml_type_util.contains_tvar ty) ->
+          Pp.string_of_ppcmds
+            (str "const "
+            ++ pp_cpp_type false [] ty
+            ++ str (" &" ^ name) )
+        | _ -> "const auto &" ^ name
+      in
       let params =
         String.concat ", "
           (List.mapi
              (fun i n ->
-               if i = this_pos then receiver_param n else "const auto &" ^ n )
+               if i = this_pos then receiver_param n else declared_param i n )
              names )
       in
       let call_args =

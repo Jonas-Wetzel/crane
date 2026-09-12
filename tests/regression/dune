@@ -8633,3 +8633,14 @@
   (alias runtest)
   (deps poly_fn_as_arg_tvar_leak.t.exe)
   (action (run ./poly_fn_as_arg_tvar_leak.t.exe))))
+
+(subdir record_with_type_field
+ (rule
+  (targets record_with_type_field.t.exe)
+  (deps RecordWithTypeField.vo record_with_type_field.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} record_with_type_field.t.exe record_with_type_field.cpp record_with_type_field.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps record_with_type_field.t.exe)
+  (action (run ./record_with_type_field.t.exe))))

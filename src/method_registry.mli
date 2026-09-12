@@ -69,6 +69,9 @@ type method_info = {
           [0] when the registration site had no type to count them from.  A
           consumer that turns the method back into a function value needs it to
           build a lambda of the right shape. *)
+  param_cpp_types : Minicpp.cpp_type list;
+      (** The C++ types the non-receiver parameters were declared at, in
+          declaration order, or [[]] until the declaration is generated. *)
 }
 
 (** A method candidate: (func_ref, body, type, this_position). Stored during
@@ -189,6 +192,15 @@ val try_register_method :
 (** Mark an existing registered method as returning [std::any]. No-op if the
     function is not registered. *)
 val register_method_returns_any : t -> GlobRef.t -> unit
+
+(** Record the C++ types of a registered method's non-receiver parameters, in
+    declaration order.  No-op if the function is not registered. *)
+val register_method_param_cpp_types :
+  t -> GlobRef.t -> Minicpp.cpp_type list -> unit
+
+(** The C++ types of a registered method's non-receiver parameters, or [[]] if
+    they were never recorded. *)
+val lookup_method_param_cpp_types : t -> GlobRef.t -> Minicpp.cpp_type list
 
 (** {2 Body safety check} *)
 

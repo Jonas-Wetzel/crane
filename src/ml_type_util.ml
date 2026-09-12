@@ -382,6 +382,15 @@ let partially_erased_fun_ty = function
     (not (prints_as_any cod)) && List.exists prints_as_any dom
   | _ -> false
 
+(** [erased_domain_fun_ty t] -- true of a function type that erased at least one
+    of its arguments, whether or not it also erased its result.  This is the
+    union of {!partially_erased_fun_ty} and {!is_fully_erased_fun_ty}, and it is
+    the condition under which a closure written at the concrete domain needs the
+    [crane_erase_fn] adapter: nothing converts to such a signature on its own. *)
+let erased_domain_fun_ty = function
+  | Minicpp.Tfun (dom, _) -> List.exists prints_as_any dom
+  | _ -> false
+
 (** [is_boxed_type t] — true if a value of type [t] is known to be physically
     inside a [std::any], and may therefore be boxed into and [any_cast] out of.
     Deliberately narrower than {!prints_as_any}: {!Minicpp.Topaque} spells

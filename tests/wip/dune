@@ -188,14 +188,3 @@
   (alias runtest)
   (deps map_over_partial_app.t.exe)
   (action (run ./map_over_partial_app.t.exe))))
-
-(subdir record_with_type_field
- (rule
-  (targets record_with_type_field.t.exe)
-  (deps RecordWithTypeField.vo record_with_type_field.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} record_with_type_field.t.exe record_with_type_field.cpp record_with_type_field.t.cpp)))
- (rule
-  (alias runtest)
-  (deps record_with_type_field.t.exe)
-  (action (run ./record_with_type_field.t.exe))))

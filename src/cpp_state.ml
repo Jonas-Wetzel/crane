@@ -736,6 +736,20 @@ let method_receiver_cpp_type (func_ref : GlobRef.t)
 let register_method_returns_any (func_ref : GlobRef.t) =
   Method_registry.register_method_returns_any (get_method_registry ()) func_ref
 
+(** Record the C++ types a registered method's non-receiver parameters were
+    declared at, in declaration order.  Called from declaration generation,
+    which is where those types are decided; the printer reads them back when it
+    has to spell a forwarding lambda for the method in value position. *)
+let register_method_param_cpp_types (func_ref : GlobRef.t)
+    (tys : Minicpp.cpp_type list) =
+  Method_registry.register_method_param_cpp_types
+    (get_method_registry ()) func_ref tys
+
+(** The C++ types of a registered method's non-receiver parameters, or [[]] if
+    they were never recorded. *)
+let method_param_cpp_types (func_ref : GlobRef.t) : Minicpp.cpp_type list =
+  Method_registry.lookup_method_param_cpp_types (get_method_registry ()) func_ref
+
 (** Check if a method is registered as returning std::any or bsl::any. *)
 let method_returns_any (func_ref : GlobRef.t) : bool =
   Method_registry.method_returns_any (get_method_registry ()) func_ref
