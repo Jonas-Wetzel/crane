@@ -4305,11 +4305,18 @@ and adapter_arg (_, id) = CPPvar (Option.get id)
     a binder instantiated at a function type, say -- rather than to the
     callee.  Arguments short of it leave a closure over the ones still to
     come, so the call is eta-expanded instead of emitted shorter than it is
-    declared. *)
-and mk_arity_call ~params ~saturated args =
+    declared.
+
+    Omit [params] where the declaration is not known: an empty list means a
+    nullary callee, which is a different thing and applies every argument to
+    the result. *)
+and mk_arity_call ?params ~saturated args =
+  match params with
+  | None -> saturated args
+  | Some params ->
   let arity = List.length params in
   let given = List.length args in
-  if given > arity && arity > 0 then
+  if given > arity then
     mk_apply
       (saturated (List.filteri (fun i _ -> i < arity) args))
       (List.filteri (fun i _ -> i >= arity) args)
@@ -7498,7 +7505,10 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
           (* A class method is a static member function of the instance
              struct, so its arity is the field's. *)
           mk_arity_call
-            ~params:(List.map (cpp_of_ml env') fld_param_tys)
+            ?params:
+              (Option.map
+                 (fun _ -> List.map (cpp_of_ml env') fld_param_tys)
+                 fld_ty_opt )
             ~saturated:(mk_call callee)
             arg_exprs
         in

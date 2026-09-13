@@ -8666,3 +8666,14 @@
   (alias runtest)
   (deps hkt_partial_app_instance.t.exe)
   (action (run ./hkt_partial_app_instance.t.exe))))
+
+(subdir instance_field_at_fun_type
+ (rule
+  (targets instance_field_at_fun_type.t.exe)
+  (deps InstanceFieldAtFunType.vo instance_field_at_fun_type.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} instance_field_at_fun_type.t.exe instance_field_at_fun_type.cpp instance_field_at_fun_type.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps instance_field_at_fun_type.t.exe)
+  (action (run ./instance_field_at_fun_type.t.exe))))

@@ -816,6 +816,25 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
               type_args
           in
           let subst_ty = Mlutil.type_subst_list subst_args field_ml_ty in
+          (* The concept requires the field at the arity the class declared it
+             at, so an instance whose type argument is itself a function type
+             ([Instance : D (nat -> nat)]) may not absorb the arrows that
+             arrived with the substitution as further parameters: they belong
+             to the value the accessor returns. *)
+          let declared_arity = count_ml_value_arrows field_ml_ty in
+          let method_args_and_ret () =
+            let args, ret = get_args_and_ret [] subst_ty in
+            let rec split n acc = function
+              | t :: rest
+                when Mlutil.isTdummy t || Table.is_typeclass_type t ->
+                split n (t :: acc) rest
+              | t :: rest when n > 0 -> split (n - 1) (t :: acc) rest
+              | surplus -> (List.rev acc, surplus)
+            in
+            let kept, surplus = split declared_arity [] args in
+            ( kept,
+              List.fold_right (fun a r -> Miniml.Tarr (a, r)) surplus ret )
+          in
           (* With the quantifier back, the method is a member template:
              [template <typename _A0> static Opt<_A0> mret(_A0)] rather than a
              signature erased to [std::any].  Its own type variables sit past
@@ -877,7 +896,7 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
               List.filter
                 (fun t ->
                   not (Table.is_typeclass_type t) && not (Mlutil.isTdummy t) )
-                (fst (get_args_and_ret [] subst_ty))
+                (fst (method_args_and_ret ()))
             in
             let missing =
               List.length arg_types - nb_lams field_body
@@ -948,12 +967,17 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
                 (List.filter
                    (fun t ->
                      not (Table.is_typeclass_type t) && not (Mlutil.isTdummy t) )
-                   (fst (get_args_and_ret [] subst_ty)) )
+                   (fst (method_args_and_ret ())) )
           in
           let rec extract_params n ml_acc cpp_acc body =
             match body with
             | MLlam (_id, ty, rest) when Mlutil.isTdummy ty ->
               extract_params n ml_acc cpp_acc rest
+            (* Past the declared arity the remaining binders are the value's
+               own, not the accessor's: they stay in the body, which the
+               return type spells as a [std::function]. *)
+            | MLlam _ when n >= declared_arity ->
+              (List.rev ml_acc, List.rev cpp_acc, body)
             | MLlam (id, ty, rest) ->
               let param_name = id_of_mlid id in
               let resolved_ty = subst_promoted_tvars ty in
@@ -981,7 +1005,7 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
           (* Determine return type: if type_subst resolved everything, use the
              substituted type. Otherwise, infer from the lambda binders. *)
           let method_ret_ty =
-            let ret = ml_return_type subst_ty in
+            let ret = snd (method_args_and_ret ()) in
             match ret with
             | (Miniml.Tvar (_, _)) when method_tvars <> [] ->
               (* The method is a member template, so a bare type variable in
@@ -1018,7 +1042,7 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
             if ml_params = [] then
               (* No lambdas in the body — either a function reference that needs
                  eta-expansion, or a non-function value field. *)
-              let all_arg_types, _ret_type = get_args_and_ret [] subst_ty in
+              let all_arg_types, _ret_type = method_args_and_ret () in
               (* Filter out type class instance and erased args *)
               let arg_types =
                 List.filter (fun t ->

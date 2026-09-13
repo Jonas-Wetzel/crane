@@ -486,8 +486,9 @@ struct Equations {
     using fun_ind_prf_ty =
         std::function<gcd_graph(std::pair<uint64_t, uint64_t>)>;
 
-    static gcd_graph fun_ind_prf(std::pair<uint64_t, uint64_t> a0) {
-      return gcd_graph_correct(a0);
+    static std::function<gcd_graph(std::pair<uint64_t, uint64_t>)>
+    fun_ind_prf() {
+      return gcd_graph_correct;
     }
   };
 
@@ -920,8 +921,8 @@ struct Equations {
   struct FunctionalInduction_collatz_steps {
     using fun_ind_prf_ty = std::function<collatz_steps_graph(uint64_t)>;
 
-    static collatz_steps_graph fun_ind_prf(uint64_t a0) {
-      return collatz_steps_graph_correct(a0);
+    static std::function<collatz_steps_graph(uint64_t)> fun_ind_prf() {
+      return collatz_steps_graph_correct;
     }
   };
 

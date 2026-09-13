@@ -86,7 +86,9 @@ struct InstanceFieldAtFunType {
   static_assert(D<dn, Nat>);
 
   struct df {
-    static Nat d(Nat x) { return Nat::s(x); }
+    static std::function<Nat(Nat)> d() {
+      return [](Nat x) { return Nat::s(x); };
+    }
   };
 
   static_assert(D<df, std::function<Nat(Nat)>>);
