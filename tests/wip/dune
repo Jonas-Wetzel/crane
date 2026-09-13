@@ -149,14 +149,3 @@
   (alias runtest)
   (deps cross_unit_duplicate_symbol.t.exe)
   (action (run ./cross_unit_duplicate_symbol.t.exe))))
-
-(subdir duplicate_output_target
- (rule
-  (targets duplicate_output_target.t.exe)
-  (deps DuplicateOutputTarget.vo duplicate_output_target.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} duplicate_output_target.t.exe duplicate_output_target.cpp duplicate_output_target.t.cpp)))
- (rule
-  (alias runtest)
-  (deps duplicate_output_target.t.exe)
-  (action (run ./duplicate_output_target.t.exe))))

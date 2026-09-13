@@ -1614,7 +1614,21 @@ let output_directory_for_module () =
     absolute paths and any parent-directory component outright; ordinary
     relative subpaths (e.g. ["sub/name"]) remain allowed and, being relative and
     free of [..], are guaranteed to stay under the output directory. *)
+(* The targets already extracted to in this session.  A second extraction to
+   one of them would overwrite the first's files with no trace of it. *)
+let claimed_output_targets : (string, unit) Hashtbl.t = Hashtbl.create 7
+
 let validate_output_target target =
+  if Hashtbl.mem claimed_output_targets target then
+    CErrors.user_err
+      Pp.(
+        strbrk
+          "Crane extraction target has already been extracted to in this file, \
+           and a second extraction would overwrite it: "
+        ++ str target
+        ++ strbrk
+             ".  Name the modules in one command to put them in one unit, or \
+              give this one a target of its own." );
   if not (Filename.is_relative target) then
     CErrors.user_err
       Pp.(
@@ -1631,7 +1645,8 @@ let validate_output_target target =
       Pp.(
         strbrk
           "Crane extraction target must not contain a '..' path component: "
-        ++ str target )
+        ++ str target );
+  Hashtbl.replace claimed_output_targets target ()
 
 (** {2 Crane Extraction AccessOpaque} *)
 
