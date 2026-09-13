@@ -116,3 +116,36 @@
 
 
 
+
+(subdir nonatomic_rc_thread_race
+ (rule
+  (targets nonatomic_rc_thread_race.t.exe)
+  (deps NonatomicRcThreadRace.vo nonatomic_rc_thread_race.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} nonatomic_rc_thread_race.t.exe nonatomic_rc_thread_race.cpp nonatomic_rc_thread_race.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps nonatomic_rc_thread_race.t.exe)
+  (action (run ./nonatomic_rc_thread_race.t.exe))))
+
+(subdir methodified_tmc_no_loopify
+ (rule
+  (targets methodified_tmc_no_loopify.t.exe)
+  (deps MethodifiedTmcNoLoopify.vo methodified_tmc_no_loopify.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} methodified_tmc_no_loopify.t.exe methodified_tmc_no_loopify.cpp methodified_tmc_no_loopify.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps methodified_tmc_no_loopify.t.exe)
+  (action (run ./methodified_tmc_no_loopify.t.exe))))
+
+(subdir methodified_member_name_clash
+ (rule
+  (targets methodified_member_name_clash.t.exe)
+  (deps MethodifiedMemberNameClash.vo methodified_member_name_clash.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} methodified_member_name_clash.t.exe methodified_member_name_clash.cpp methodified_member_name_clash.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps methodified_member_name_clash.t.exe)
+  (action (run ./methodified_member_name_clash.t.exe))))
