@@ -127,3 +127,14 @@
   (alias runtest)
   (deps existential_fn_projection.t.exe)
   (action (run ./existential_fn_projection.t.exe))))
+
+(subdir const_init_forward_ref
+ (rule
+  (targets const_init_forward_ref.t.exe)
+  (deps ConstInitForwardRef.vo Coord.vo Store.vo const_init_forward_ref.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} const_init_forward_ref.t.exe const_init_forward_ref.cpp const_init_forward_ref.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps const_init_forward_ref.t.exe)
+  (action (run ./const_init_forward_ref.t.exe))))
