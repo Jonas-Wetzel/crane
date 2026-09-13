@@ -46,16 +46,19 @@ let rec depth e =
         ~on_stmts:(fun acc _ -> acc)
         0 e
 
-(** [flatten_expr ty e] is [e] rewritten so that no remaining nesting reaches
+(** [flatten_expr e] is [e] rewritten so that no remaining nesting reaches
     {!chunk_depth}, paired with the bindings the lifted pieces were given, in
     the order they must be emitted.  Each piece is used exactly once, hence the
-    move. *)
-let flatten_expr e =
+    move.
+
+    What {!descendable} rejects is not restructured, but it may still hide a
+    too-deep expression of its own, so it is handed back to {!bound_expr}. *)
+let rec flatten_expr e =
   let stmts = ref [] in
   let next = ref 0 in
   let rec go e =
     if not (descendable e) then
-      e
+      bound_expr e
     else begin
       let e = map_expr go (fun s -> s) (fun t -> t) e in
       if depth e < chunk_depth then
@@ -71,16 +74,20 @@ let flatten_expr e =
   let e = go e in
   (List.rev !stmts, e)
 
-(** [flatten decl] rewrites every initialiser in [decl] whose nesting exceeds
-    {!max_depth}, and leaves the rest untouched. *)
-let rec flatten decl =
-  match decl with
-  | Dasgn (r, ty, e) when depth e > max_depth ->
+(** [bound_expr e] is [e] with every too-deep subexpression replaced by an
+    immediately-invoked lambda that computes it as a run of bindings.  Being an
+    expression itself, the replacement needs no statement context and so fits
+    wherever the original stood: an initialiser, a return, a call argument. *)
+and bound_expr e =
+  if descendable e && depth e > max_depth then begin
     let stmts, e = flatten_expr e in
-    Dasgn
-      ( r,
-        ty,
-        mk_call (mk_lambda [] (Some ty) (stmts @ [Sreturn (Some e)]) ~by_value:false) [] )
-  | Dtemplate (tps, c, inner) -> Dtemplate (tps, c, flatten inner)
-  | Dnspace (r, decls) -> Dnspace (r, List.map flatten decls)
-  | _ -> decl
+    mk_iife None (stmts @ [Sreturn (Some e)])
+  end
+  else
+    map_expr bound_expr bound_stmt (fun t -> t) e
+
+and bound_stmt s = map_stmt bound_expr bound_stmt (fun t -> t) s
+
+(** [flatten decl] rewrites every expression in [decl] whose nesting exceeds
+    {!max_depth}, and leaves the rest untouched. *)
+let flatten decl = map_decl bound_expr bound_stmt (fun t -> t) decl

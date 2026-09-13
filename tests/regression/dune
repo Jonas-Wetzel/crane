@@ -8771,3 +8771,14 @@
   (alias runtest)
   (deps primfloat_self_init.t.exe)
   (action (run ./primfloat_self_init.t.exe))))
+
+(subdir deep_arith_nesting
+ (rule
+  (targets deep_arith_nesting.t.exe)
+  (deps DeepArithNesting.vo deep_arith_nesting.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} deep_arith_nesting.t.exe deep_arith_nesting.cpp deep_arith_nesting.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps deep_arith_nesting.t.exe)
+  (action (run ./deep_arith_nesting.t.exe))))
