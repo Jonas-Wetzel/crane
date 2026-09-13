@@ -611,6 +611,20 @@ let unstable_locals ~(stable : Id.Set.t) (body : cpp_stmt list) : Id.Set.t =
                         list of [CPPfun_call] forms. Used to extract and remove
                         the receiver from over-long argument lists.
     @param method_name  The method name to match on. *)
+(** The receiver of a recursive call, with the wrappers that only re-spell an
+    object stripped off.  [std::move] is one: it is a cast, so moving out of
+    [this] still names the storage of [this] rather than making a temporary of
+    its own. *)
+let rec receiver_storage = function CPPmove e -> receiver_storage e | e -> e
+
+(** Whether a recursive call's receiver is a value temporary, whose address
+    would dangle once parked in an [_Enter] frame.  A receiver that names
+    existing storage -- a variable, [this], or a smart pointer it dereferences
+    -- is not. *)
+let receiver_is_value = function
+  | CPPderef _ | CPPvar _ | CPPthis -> false
+  | _ -> true
+
 let method_checker
     ~(n_params : int)
     ~(has_self_param : bool)
@@ -621,7 +635,7 @@ let method_checker
     CPPvar: take the address (&var) to get a pointer.
     Other: take the address. *)
  let recv_to_self recv =
-   match recv with
+   match receiver_storage recv with
    | CPPderef inner ->
      Table.mark_needs_erase_fn ();
      CPPfun_call (call_opaque, CPPvar id_crane_raw, of_reversed ([inner]))
@@ -8639,10 +8653,9 @@ let transform_method ~tparams ~self_ty mf =
       in
       let has_value_receiver =
         List.exists (fun cs ->
-          match cs.cs_recv with
+          match Option.map receiver_storage cs.cs_recv with
           | None -> false
-          | Some (CPPderef _ | CPPvar _ | CPPthis as r) -> reads_unstable r
-          | Some _ -> true)
+          | Some r -> if receiver_is_value r then true else reads_unstable r)
           calls
       in
       (* A tail call whose receiver is a value temporary ([t::n(...)]) can
@@ -8667,10 +8680,7 @@ let transform_method ~tparams ~self_ty mf =
             e
         in
         let changed = ref false in
-        let is_value_recv = function
-          | CPPderef _ | CPPvar _ | CPPthis -> false
-          | _ -> true
-        in
+        let is_value_recv e = receiver_is_value (receiver_storage e) in
         let replace_at pos x l = List.mapi (fun i y -> if i = pos then x else y) l in
         (* [park e] returns the rewritten self-call, with its value receiver
            replaced by a reference to the parking slot, or [None]. *)
@@ -8725,8 +8735,7 @@ let transform_method ~tparams ~self_ty mf =
               (fun cs ->
                 match cs.cs_recv with
                 | None -> false
-                | Some (CPPderef _ | CPPvar _ | CPPthis) -> false
-                | Some _ -> true )
+                | Some r -> receiver_is_value (receiver_storage r) )
               calls
           in
           if still then (body_with_self, has_value_receiver, None)

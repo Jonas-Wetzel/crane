@@ -259,12 +259,42 @@ struct MethodifiedTmcNoLoopify {
     }
 
     wrap wraps(uint64_t n) const {
-      if (n <= 0) {
-        return std::move(*this);
-      } else {
-        uint64_t k = n - 1;
-        return wrap::ww(std::move(*this).wraps(k));
+      const wrap *_self = this;
+
+      /// _Enter: captures varying parameters for each recursive call.
+      struct _Enter {
+        const wrap *_self;
+        uint64_t n;
+      };
+
+      /// _Resume_k: resumes after recursive call with _result.
+      struct _Resume_k {};
+
+      using _Frame = std::variant<_Enter, _Resume_k>;
+      wrap _result{};
+      crane::small_vector<_Frame> _stack;
+      _stack.emplace_back(_Enter{_self, n});
+      /// Loopified wraps: _Enter -> _Resume_k.
+      while (!_stack.empty()) {
+        _Frame _frame = std::move(_stack.back());
+        _stack.pop_back();
+        if (std::holds_alternative<_Enter>(_frame)) {
+          auto _f = std::move(std::get<_Enter>(_frame));
+          const wrap *_self = _f._self;
+          uint64_t n = _f.n;
+          if (n <= 0) {
+            _result = std::move(*_self);
+          } else {
+            uint64_t k = n - 1;
+            _stack.emplace_back(_Resume_k{});
+            _stack.emplace_back(_Enter{crane_raw(_self), k});
+          }
+        } else {
+          auto _f = std::move(std::get<_Resume_k>(_frame));
+          _result = wrap::ww(std::move(_result));
+        }
       }
+      return _result;
     }
 
     template <typename T1, typename F0, typename F1>
