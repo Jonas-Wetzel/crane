@@ -116,13 +116,3 @@
 
 
 
-(subdir hkt_record_dict
- (rule
-  (targets hkt_record_dict.t.exe)
-  (deps HktRecordDict.vo hkt_record_dict.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} hkt_record_dict.t.exe hkt_record_dict.cpp hkt_record_dict.t.cpp)))
- (rule
-  (alias runtest)
-  (deps hkt_record_dict.t.exe)
-  (action (run ./hkt_record_dict.t.exe))))

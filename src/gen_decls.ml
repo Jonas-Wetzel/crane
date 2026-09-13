@@ -321,6 +321,20 @@ let gen_record_cpp name fields ind =
             t
         in
         let ct = Minicpp.map_cpp_type replace_promoted ct in
+        (* A record's parameters are plain [typename]s, so one of them cannot
+           be applied: where the field type applies a higher-kinded parameter
+           ([F A]), the parameter stands for the carrier already applied at
+           the erased element -- [FnD<std::optional<std::any>>] -- and the
+           application is the parameter itself.  Only a class demotes such a
+           parameter to an associated type it can apply. *)
+        let ct =
+          Minicpp.map_cpp_type
+            (function
+              | Tapply ((Tvar (_, Some v) as head), _)
+                when List.exists (fun x -> Id.equal x v) all_vars -> head
+              | ty -> ty )
+            ct
+        in
         ( Fvar' (n, ct), VPublic, SNoTag ) )
       fields
   in

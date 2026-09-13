@@ -8,7 +8,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -78,17 +77,14 @@ public:
 /// scope (f::template fmd<...>).
 struct HktRecordDict {
   template <typename F> struct FnD {
-    std::function<F<std::any>(std::function<std::any(std::any)>, F<std::any>)>
-        fmd;
+    std::function<F(std::function<std::any(std::any)>, F)> fmd;
   };
 
   template <template <typename> class T1, typename T2, typename F1,
             typename T3 = std::invoke_result_t<F1 &, T2 &>>
-    requires std::is_invocable_r_v<T3, F1 &, T2 &>
   static T1<T3> fmd(const FnD<T1<std::any>> &f, F1 &&x, T1<T2> x0) {
-    return [=](T1<T2> _sat0) mutable {
-      return f::template fmd<T2, T3>(x, x0, _sat0);
-    };
+    return crane_container_cast<T1<T3>>(
+        f.fmd(crane_erase_fn(x), crane_container_cast<T1<std::any>>(x0)));
   }
 
   static inline const FnD<std::optional<std::any>> optd = []() {

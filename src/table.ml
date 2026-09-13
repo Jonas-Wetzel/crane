@@ -538,7 +538,21 @@ let add_ind_hkt_params r positions =
 let get_ind_hkt_params_arities r =
   let open GlobRef in
   let r = match r with ConstructRef (ip, _) -> IndRef ip | r -> r in
-  try Refmap'.find r !hkt_params_table with Not_found -> []
+  (* Only a CLASS has an associated type to demote the parameter into: a
+     plain record is a value, and its parameter is the carrier already
+     applied -- [FnD<std::optional<std::any>>], not [FnD<std::optional>].
+     Extraction records the positions before the kind is known, so the
+     restriction is made here, where every consumer reads them. *)
+  let is_class =
+    match r with
+    | ConstructRef ((kn, _), _) | IndRef (kn, _) ->
+      ( match Mindmap_env.find_opt kn !inductive_kinds with
+      | Some (Miniml.TypeClass _) -> true
+      | _ -> false )
+    | _ -> false
+  in
+  if not is_class then []
+  else try Refmap'.find r !hkt_params_table with Not_found -> []
 
 (** Positions (0-based among the [Keep] type parameters) of [r]'s parameters
     that are type constructors. Empty for everything else. *)

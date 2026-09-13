@@ -130,6 +130,10 @@ val filter_value_types : Miniml.ml_type list -> Miniml.ml_type list
 val ml_codomain_erases_to_any :
   ?has_dummy:bool -> int -> Miniml.ml_type -> bool
 
+(** What a MiniML type returns once [n] value arguments have been applied,
+    skipping erased domains.  [None] where it has fewer value arrows. *)
+val ml_codomain_after : int -> Miniml.ml_type -> Miniml.ml_type option
+
 (** {2 Type variables in C++ types} *)
 
 (** Whether a C++ type contains a type variable. *)

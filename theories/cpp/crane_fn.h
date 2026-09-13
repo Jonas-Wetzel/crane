@@ -251,6 +251,12 @@ template <class Dst, class Src> Dst crane_container_cast(Src &&src) {
   auto _convert = [](auto &&_e) -> Elt {
     if constexpr (std::is_same_v<std::decay_t<decltype(_e)>, Elt>)
       return _e;
+    // The other direction: a concrete element going INTO an erased carrier
+    // ([std::optional<Nat>] handed to a dictionary method declared over
+    // [std::optional<std::any>]).  Boxing is the conversion; nothing is cast
+    // out.
+    else if constexpr (std::is_same_v<Elt, std::any>)
+      return std::any(_e);
     else if constexpr (crane_is_boxlike<Elt>::value) {
       using U = typename Elt::value_type;
       const std::any &_a = _e; // box<any> -> const any&, or any -> any
@@ -258,6 +264,17 @@ template <class Dst, class Src> Dst crane_container_cast(Src &&src) {
     } else
       return crane_any_cast<Elt>(_e);
   };
+  // A carrier holding at most one element (std::optional) is not a range, so
+  // no walk reaches its element: convert the contained value, if any.
+  if constexpr (!requires(Src &_s) { _s.begin(); } &&
+                requires(const Src &_s) {
+                  _s.has_value();
+                  *_s;
+                }) {
+    if (!src.has_value())
+      return Dst();
+    return Dst(_convert(*src));
+  } else
   // Fast path for containers that build in one shot from a range (e.g. the
   // cons-list crane::list, where repeated push_back would each rebuild the spine
   // and make this O(n^2)): convert into a temp buffer, then a single O(n)

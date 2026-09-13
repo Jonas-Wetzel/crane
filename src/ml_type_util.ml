@@ -263,6 +263,18 @@ let rec ml_codomain_erases_to_any ?(has_dummy = false) n = function
   | Miniml.Tmeta {contents = Some t} -> ml_codomain_erases_to_any ~has_dummy n t
   | _ -> false
 
+(** [ml_codomain_after n ty] is what [ty] returns once [n] value arguments
+    have been applied, skipping erased (proof and type) domains as
+    {!ml_codomain_erases_to_any} does.  [None] where [ty] has fewer value
+    arrows than that. *)
+let rec ml_codomain_after n = function
+  | Miniml.Tarr (t, rest) ->
+    if isTdummy t then ml_codomain_after n rest
+    else if n > 0 then ml_codomain_after (n - 1) rest
+    else Some (Miniml.Tarr (t, rest))
+  | Miniml.Tmeta {contents = Some t} -> ml_codomain_after n t
+  | ty -> if n = 0 then Some ty else None
+
 (** Return [true] if the C++ type contains any unresolved type variable
     ([Tvar] or [Tauto]).  Used by {!gen_type_conversion_expr} to decide whether
     a field needs a converting constructor call. *)

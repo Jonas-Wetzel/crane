@@ -7501,6 +7501,15 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
               (fun j a ->
                 let e = gen_expr ~slot env' a in
                 match List.nth_opt fld_param_tys j with
+                | Some (Miniml.Tapp _ as pt) when not is_typeclass ->
+                  (* The dictionary's method is stored monomorphically, over
+                     the carrier at the erased element, and a carrier does not
+                     convert elementwise on its own -- [optional<any>] built
+                     from an [optional<Nat>] holds the {e optional}, not the
+                     [Nat].  Box the elements on the way in, as the result is
+                     unboxed on the way out. *)
+                  Table.mark_needs_erase_fn ();
+                  CPPcontainer_cast (cpp_of_ml env' pt, e, false)
                 | Some pt -> erase_fn_arg_for_param env' pt a e
                 | None -> e )
               value_args
@@ -7553,7 +7562,27 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
           | Some ft -> (not hkt_class) && ml_codomain_erases_to_any n_value_args ft
           | None -> false
         in
-        recover_boxed_result ~boxed:erased_cod call
+        let call = recover_boxed_result ~boxed:erased_cod call in
+        (* A value dictionary stores its methods monomorphically, so a field
+           whose result is the record's own carrier applied to one of the
+           method's type variables ([F B]) hands back the carrier at the
+           erased element.  The position knows the element the caller means,
+           and only an elementwise conversion gets there. *)
+        let carrier_result =
+          match fld_ty_opt with
+          | Some ft ->
+            (not is_typeclass)
+            &&
+            ( match ml_codomain_after n_value_args ft with
+            | Some (Miniml.Tapp _) -> true
+            | _ -> false )
+          | None -> false
+        in
+        ( match expected_ty with
+        | Some want when carrier_result && not (prints_as_any want) ->
+          Table.mark_needs_erase_fn ();
+          CPPcontainer_cast (want, call, false)
+        | _ -> call )
       | _ -> CErrors.anomaly (Pp.str "record field index out of bounds") )
     | _ ->
       (* Destructure record fields into local variables, then evaluate the body
