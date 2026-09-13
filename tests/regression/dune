@@ -138,6 +138,17 @@
   (alias runtest)
   (deps hkt_single_ctor_instance_body.t.exe)
   (action (run ./hkt_single_ctor_instance_body.t.exe))))
+(subdir module_alias_factory_name
+ (rule
+  (targets module_alias_factory_name.t.exe)
+  (deps ModuleAliasFactoryName.vo module_alias_factory_name.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} module_alias_factory_name.t.exe module_alias_factory_name.cpp module_alias_factory_name.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps module_alias_factory_name.t.exe)
+  (action (run ./module_alias_factory_name.t.exe))))
+
 (subdir record_function_field_stdlib_probe
  (rule
   (targets record_function_field_stdlib_probe.t.exe)
@@ -148,6 +159,17 @@
   (alias runtest)
   (deps record_function_field_stdlib_probe.t.exe)
   (action (run ./record_function_field_stdlib_probe.t.exe))))
+
+(subdir sibling_module_type_qualified
+ (rule
+  (targets sibling_module_type_qualified.t.exe)
+  (deps SiblingModuleTypeQualified.vo sibling_module_type_qualified.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} sibling_module_type_qualified.t.exe sibling_module_type_qualified.cpp sibling_module_type_qualified.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps sibling_module_type_qualified.t.exe)
+  (action (run ./sibling_module_type_qualified.t.exe))))
 
 (subdir sigt_erased_structured_binding
  (rule
