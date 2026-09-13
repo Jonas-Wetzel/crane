@@ -1648,6 +1648,28 @@ let validate_output_target target =
         ++ str target );
   Hashtbl.replace claimed_output_targets target ()
 
+(* The C++ unit each Rocq library was extracted into.  A later extraction that
+   depends on that library must include its header rather than re-emit its
+   declarations, which would be a duplicate symbol at link time.  The map is
+   written into the [.vo] so that [Require]-ing the library carries it. *)
+let extracted_units = Summary.ref MPmap.empty ~name:"CraneExtractedUnits"
+
+let set_extracted_unit mp target =
+  extracted_units := MPmap.add mp target !extracted_units
+
+let extracted_units_object : ModPath.t * string -> obj =
+  declare_object
+  @@ superglobal_object_nodischarge
+       "Crane Extracted Units"
+       ~cache:(fun (mp, target) -> set_extracted_unit mp target)
+       ~subst:None
+
+let claim_extracted_unit mp target =
+  if not (MPmap.mem mp !extracted_units) then
+    Lib.add_leaf (extracted_units_object (mp, target))
+
+let extracted_unit_of mp = MPmap.find_opt mp !extracted_units
+
 (** {2 Crane Extraction AccessOpaque} *)
 
 let access_opaque = my_bool_option "AccessOpaque" true

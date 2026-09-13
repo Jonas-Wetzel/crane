@@ -721,8 +721,10 @@ let header fn () =
 
 (** Generates the header file preamble: include guard, includes, BDE concept
     boilerplate (if applicable), and string literals directive. *)
-let spec_header si () =
-  let imps = get_custom_imports () in
+let spec_header ?(unit_includes = []) si () =
+  (* Headers of the units that already emitted libraries this one depends on
+     come first: they are the reason those declarations are absent below. *)
+  let imps = List.map (fun u -> u ^ ".h") unit_includes @ get_custom_imports () in
   let himports =
     if is_bde () then
       let needed = Common.get_needed_headers () in
@@ -1212,7 +1214,8 @@ let opened_filter : (ModPath.t -> bool) ref = ref (fun _ -> true)
 (** Renders an entire ML structure to C++ header and implementation files.
     Performs dry run first for renaming, then generates and formats the output.
 *)
-let print_structure_to_file ?(namespace = None) (fn, si, mo) dry struc =
+let print_structure_to_file ?(namespace = None) ?(unit_includes = [])
+    (fn, si, mo) dry struc =
   Buffer.clear buf;
   let d = descr () in
   reset_renaming_tables AllButExternal;
@@ -1340,7 +1343,7 @@ let print_structure_to_file ?(namespace = None) (fn, si, mo) dry struc =
       let cout = open_out si in
       let ft = formatter false (Some cout) in
       ( try
-          pp_with ft (spec_header (Some si) ());
+          pp_with ft (spec_header ~unit_includes (Some si) ());
           pp_with ft (d.sig_preamble mo comment opened unsafe_needs);
           pp_with ft ns_open;
           pp_with ft body_hstruct;
@@ -1362,7 +1365,7 @@ let print_structure_to_file ?(namespace = None) (fn, si, mo) dry struc =
     let ft = formatter false None in
     try
       pp_with ft (fnl2 () ++ str "/* Signature (.h) */" ++ fnl ());
-      pp_with ft (spec_header None ());
+      pp_with ft (spec_header ~unit_includes None ());
       pp_with ft (d.sig_preamble mo comment opened unsafe_needs);
       pp_with ft ns_open;
       pp_with ft body_hstruct;
@@ -1503,6 +1506,38 @@ let full_extr_with_result opaque_access f (refs, mps) after_print =
       let struc =
         optimize_struct (refs, mps) (mono_environment ~opaque_access refs mps)
       in
+      (* A Rocq library that an earlier extraction already emitted belongs to
+         that unit.  Re-emitting it here would define the same symbols a second
+         time, so linking both units would fail; this unit includes that unit's
+         header and drops the library from its own output.  The libraries that
+         remain are claimed for this unit, for the next extraction to see. *)
+      let foreign, struc =
+        match f with
+        | None -> ([], struc)
+        | Some target ->
+          (* Only a library from another file can be dropped.  Several modules
+             of the file being compiled are routinely extracted into units of
+             their own, and each of those extractions sees the same enclosing
+             [MPfile]; dropping it after the first would silently emit
+             nothing. *)
+          let current = MPfile (Lib.library_dp ()) in
+          let foreign, own =
+            List.partition
+              (fun (mp, _) ->
+                (not (ModPath.equal mp current))
+                &&
+                match Table.extracted_unit_of mp with
+                | Some unit -> not (String.equal unit target)
+                | None -> false )
+              struc
+          in
+          List.iter (fun (mp, _) -> Table.claim_extracted_unit mp target) own;
+          (foreign, own)
+      in
+      let unit_includes =
+        List.sort_uniq String.compare
+          (List.filter_map (fun (mp, _) -> Table.extracted_unit_of mp) foreign)
+      in
       warns ();
       let filenames = mono_filename f in
       (* Parse doc comments from the source .v file, if available *)
@@ -1512,7 +1547,7 @@ let full_extr_with_result opaque_access f (refs, mps) after_print =
         if source <> "" then
           Doc_comments.set_table (Doc_comments.parse_file source)
       | _ -> () );
-      print_structure_to_file filenames false struc;
+      print_structure_to_file ~unit_includes filenames false struc;
       after_print () )
 
 let full_extr opaque_access f refs =

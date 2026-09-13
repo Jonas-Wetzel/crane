@@ -8826,3 +8826,14 @@
   (alias runtest)
   (deps duplicate_output_target.t.exe)
   (action (run ./duplicate_output_target.t.exe))))
+
+(subdir cross_unit_duplicate_symbol
+ (rule
+  (targets cross_unit_duplicate_symbol.t.exe)
+  (deps Use.vo Lib.vo cross_unit_duplicate_symbol.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} cross_unit_duplicate_symbol.t.exe cross_unit_duplicate_symbol_lib.cpp cross_unit_duplicate_symbol.cpp cross_unit_duplicate_symbol.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps cross_unit_duplicate_symbol.t.exe)
+  (action (run ./cross_unit_duplicate_symbol.t.exe))))
