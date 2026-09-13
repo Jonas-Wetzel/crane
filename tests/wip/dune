@@ -110,3 +110,156 @@
   (alias runtest)
   (deps cps_continuation_copy.t.exe)
   (action (run ./cps_continuation_copy.t.exe))))
+(subdir anon_lift_name_collision
+ (rule
+  (targets anon_lift_name_collision.t.exe)
+  (deps AnonLiftNameCollision.vo anon_lift_name_collision.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} anon_lift_name_collision.t.exe anon_lift_name_collision.cpp anon_lift_name_collision.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps anon_lift_name_collision.t.exe)
+  (action (run ./anon_lift_name_collision.t.exe))))
+
+(subdir dependent_match_branch_types
+ (rule
+  (targets dependent_match_branch_types.t.exe)
+  (deps DependentMatchBranchTypes.vo dependent_match_branch_types.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} dependent_match_branch_types.t.exe dependent_match_branch_types.cpp dependent_match_branch_types.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps dependent_match_branch_types.t.exe)
+  (action (run ./dependent_match_branch_types.t.exe))))
+
+(subdir duplicate_class_name_modules
+ (rule
+  (targets duplicate_class_name_modules.t.exe)
+  (deps DuplicateClassNameModules.vo duplicate_class_name_modules.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} duplicate_class_name_modules.t.exe duplicate_class_name_modules.cpp duplicate_class_name_modules.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps duplicate_class_name_modules.t.exe)
+  (action (run ./duplicate_class_name_modules.t.exe))))
+
+(subdir erased_fn_in_recursive_container
+ (rule
+  (targets erased_fn_in_recursive_container.t.exe)
+  (deps ErasedFnInRecursiveContainer.vo erased_fn_in_recursive_container.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} erased_fn_in_recursive_container.t.exe erased_fn_in_recursive_container.cpp erased_fn_in_recursive_container.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps erased_fn_in_recursive_container.t.exe)
+  (action (run ./erased_fn_in_recursive_container.t.exe))))
+
+(subdir functor_local_class_template_kw
+ (rule
+  (targets functor_local_class_template_kw.t.exe)
+  (deps FunctorLocalClassTemplateKw.vo functor_local_class_template_kw.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} functor_local_class_template_kw.t.exe functor_local_class_template_kw.cpp functor_local_class_template_kw.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps functor_local_class_template_kw.t.exe)
+  (action (run ./functor_local_class_template_kw.t.exe))))
+
+(subdir if_branch_function_params
+ (rule
+  (targets if_branch_function_params.t.exe)
+  (deps IfBranchFunctionParams.vo if_branch_function_params.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} if_branch_function_params.t.exe if_branch_function_params.cpp if_branch_function_params.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps if_branch_function_params.t.exe)
+  (action (run ./if_branch_function_params.t.exe))))
+
+(subdir instance_method_ignores_arg
+ (rule
+  (targets instance_method_ignores_arg.t.exe)
+  (deps InstanceMethodIgnoresArg.vo instance_method_ignores_arg.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} instance_method_ignores_arg.t.exe instance_method_ignores_arg.cpp instance_method_ignores_arg.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps instance_method_ignores_arg.t.exe)
+  (action (run ./instance_method_ignores_arg.t.exe))))
+
+(subdir let_polymorphic_lift_rename
+ (rule
+  (targets let_polymorphic_lift_rename.t.exe)
+  (deps LetPolymorphicLiftRename.vo let_polymorphic_lift_rename.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} let_polymorphic_lift_rename.t.exe let_polymorphic_lift_rename.cpp let_polymorphic_lift_rename.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps let_polymorphic_lift_rename.t.exe)
+  (action (run ./let_polymorphic_lift_rename.t.exe))))
+
+(subdir module_alias_factory_name
+ (rule
+  (targets module_alias_factory_name.t.exe)
+  (deps ModuleAliasFactoryName.vo module_alias_factory_name.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} module_alias_factory_name.t.exe module_alias_factory_name.cpp module_alias_factory_name.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps module_alias_factory_name.t.exe)
+  (action (run ./module_alias_factory_name.t.exe))))
+
+(subdir module_named_like_generated_type
+ (rule
+  (targets module_named_like_generated_type.t.exe)
+  (deps ModuleNamedLikeGeneratedType.vo module_named_like_generated_type.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} module_named_like_generated_type.t.exe module_named_like_generated_type.cpp module_named_like_generated_type.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps module_named_like_generated_type.t.exe)
+  (action (run ./module_named_like_generated_type.t.exe))))
+
+(subdir multi_arg_function_value
+ (rule
+  (targets multi_arg_function_value.t.exe)
+  (deps MultiArgFunctionValue.vo multi_arg_function_value.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} multi_arg_function_value.t.exe multi_arg_function_value.cpp multi_arg_function_value.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps multi_arg_function_value.t.exe)
+  (action (run ./multi_arg_function_value.t.exe))))
+
+(subdir phantom_type_arg_never_emitted
+ (rule
+  (targets phantom_type_arg_never_emitted.t.exe)
+  (deps PhantomTypeArgNeverEmitted.vo phantom_type_arg_never_emitted.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} phantom_type_arg_never_emitted.t.exe phantom_type_arg_never_emitted.cpp phantom_type_arg_never_emitted.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps phantom_type_arg_never_emitted.t.exe)
+  (action (run ./phantom_type_arg_never_emitted.t.exe))))
+
+(subdir sibling_module_type_qualified
+ (rule
+  (targets sibling_module_type_qualified.t.exe)
+  (deps SiblingModuleTypeQualified.vo sibling_module_type_qualified.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} sibling_module_type_qualified.t.exe sibling_module_type_qualified.cpp sibling_module_type_qualified.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps sibling_module_type_qualified.t.exe)
+  (action (run ./sibling_module_type_qualified.t.exe))))
+
+(subdir user_inductive_shadows_stdlib
+ (rule
+  (targets user_inductive_shadows_stdlib.t.exe)
+  (deps UserInductiveShadowsStdlib.vo user_inductive_shadows_stdlib.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} user_inductive_shadows_stdlib.t.exe user_inductive_shadows_stdlib.cpp user_inductive_shadows_stdlib.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps user_inductive_shadows_stdlib.t.exe)
+  (action (run ./user_inductive_shadows_stdlib.t.exe))))
