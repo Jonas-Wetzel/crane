@@ -171,3 +171,25 @@
   (alias runtest)
   (deps existential_fn_projection.t.exe)
   (action (run ./existential_fn_projection.t.exe))))
+
+(subdir deep_arith_nesting
+ (rule
+  (targets deep_arith_nesting.t.exe)
+  (deps DeepArithNesting.vo deep_arith_nesting.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} deep_arith_nesting.t.exe deep_arith_nesting.cpp deep_arith_nesting.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps deep_arith_nesting.t.exe)
+  (action (run ./deep_arith_nesting.t.exe))))
+
+(subdir cross_unit_duplicate_symbol
+ (rule
+  (targets cross_unit_duplicate_symbol.t.exe)
+  (deps Use.vo Lib.vo cross_unit_duplicate_symbol.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} cross_unit_duplicate_symbol.t.exe cross_unit_duplicate_symbol_lib.cpp cross_unit_duplicate_symbol.cpp cross_unit_duplicate_symbol.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps cross_unit_duplicate_symbol.t.exe)
+  (action (run ./cross_unit_duplicate_symbol.t.exe))))
