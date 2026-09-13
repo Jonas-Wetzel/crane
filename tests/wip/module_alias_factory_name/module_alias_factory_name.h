@@ -40,7 +40,7 @@ struct Lib {
 using A = Lib;
 
 struct ModuleAliasFactoryName {
-  static inline const uint64_t run = A::get(A::t::c0(UINT64_C(3)));
+  static inline const uint64_t run = A::get(A::t::c(UINT64_C(3)));
 };
 
 #endif // INCLUDED_MODULE_ALIAS_FACTORY_NAME

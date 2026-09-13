@@ -87,15 +87,15 @@ public:
 struct Pos {
   struct mask {
     // TYPES
-    struct IsNul0 {};
+    struct IsNul {};
 
-    struct IsPos0 {
+    struct IsPos {
       Positive a0;
     };
 
-    struct IsNeg0 {};
+    struct IsNeg {};
 
-    using variant_t = std::variant<IsNul0, IsPos0, IsNeg0>;
+    using variant_t = std::variant<IsNul, IsPos, IsNeg>;
 
   private:
     // DATA
@@ -105,17 +105,17 @@ struct Pos {
     // CREATORS
     mask() {}
 
-    explicit mask(IsNul0 _v) : v_(_v) {}
+    explicit mask(IsNul _v) : v_(_v) {}
 
-    explicit mask(IsPos0 _v) : v_(std::move(_v)) {}
+    explicit mask(IsPos _v) : v_(std::move(_v)) {}
 
-    explicit mask(IsNeg0 _v) : v_(_v) {}
+    explicit mask(IsNeg _v) : v_(_v) {}
 
-    static mask isnul0() { return mask(IsNul0{}); }
+    static mask isnul() { return mask(IsNul{}); }
 
-    static mask ispos0(Positive a0) { return mask(IsPos0{std::move(a0)}); }
+    static mask ispos(Positive a0) { return mask(IsPos{std::move(a0)}); }
 
-    static mask isneg0() { return mask(IsNeg0{}); }
+    static mask isneg() { return mask(IsNeg{}); }
 
     // MANIPULATORS
     inline variant_t &v_mut() { return v_; }

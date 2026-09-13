@@ -160,7 +160,7 @@ template <typename A> struct Sig {
   Sig<A> clone() const { return {x}; }
 
   // CREATORS
-  static Sig<A> exist0(A x) { return {std::move(x)}; }
+  static Sig<A> exist(A x) { return {std::move(x)}; }
 };
 
 template <typename A> struct Sig2 {
@@ -171,7 +171,7 @@ template <typename A> struct Sig2 {
   Sig2<A> clone() const { return {x}; }
 
   // CREATORS
-  static Sig2<A> exist1(A x) { return {std::move(x)}; }
+  static Sig2<A> exist2(A x) { return {std::move(x)}; }
 };
 
 template <typename A, typename P> struct SigT {
@@ -183,7 +183,7 @@ template <typename A, typename P> struct SigT {
   SigT<A, P> clone() const { return {x, a1}; }
 
   // CREATORS
-  static SigT<A, P> existt0(A x, P a1) { return {std::move(x), std::move(a1)}; }
+  static SigT<A, P> existt(A x, P a1) { return {std::move(x), std::move(a1)}; }
 };
 
 template <typename A, typename P, typename Q> struct SigT2 {
@@ -196,7 +196,7 @@ template <typename A, typename P, typename Q> struct SigT2 {
   SigT2<A, P, Q> clone() const { return {x, a1, a2}; }
 
   // CREATORS
-  static SigT2<A, P, Q> existt1(A x, P a1, Q a2) {
+  static SigT2<A, P, Q> existt2(A x, P a1, Q a2) {
     return {std::move(x), std::move(a1), std::move(a2)};
   }
 };

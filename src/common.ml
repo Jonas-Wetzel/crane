@@ -970,12 +970,28 @@ and mp_renaming =
 
 (** {2 Renamings creation for a global_reference} *)
 
+(** The short name a reference has already been emitted under, keyed by its
+    canonical kernel name.
+
+    A module alias gives one declaration two user-level references, and the
+    caches below are keyed by user name, so the second reference would be
+    renamed out of the way of the first -- a constructor [c] declared once and
+    called as [c0].  The two are the same declaration and must share a short
+    name; only the qualification in front of it may differ, and that is derived
+    from the user-level module path, below. *)
+let canonical_short_name : string GlobRef.Map.t ref = ref GlobRef.Map.empty
+
+let () = register_cleanup (fun () -> canonical_short_name := GlobRef.Map.empty)
+
 (** We build its fully-qualified name in a [string list] form (head is the short
     name). *)
 let ref_renaming_fun (k, r) =
   let mp = modpath_of_r r in
   let l = mp_renaming mp in
   let l = if lang () != Cpp && not (modular ()) then [""] else l in
+  match GlobRef.Map.find_opt r !canonical_short_name with
+  | Some s -> s :: l
+  | None ->
   let s =
     let idg = safe_basename_of_global r in
     match l with
@@ -1083,6 +1099,7 @@ let ref_renaming_fun (k, r) =
       | _ -> s )
   in
   add_global_ids (Id.of_string s);
+  canonical_short_name := GlobRef.Map.add r s !canonical_short_name;
   s :: l
 
 (** Cached version of ref_renaming_fun. *)
