@@ -21,8 +21,10 @@ include Ml_type_util
 (** Compute the factory method name for a constructor.
     Factory names are the lowercase of the constructor struct name
     (e.g. [Cons] -> ["cons"]). If the lowercased name collides with a C++
-    keyword, one of {!Common.inductive_generated_members}, or the enclosing type's own name (which C++ treats as a constructor declaration),
-    the original PascalCase is kept with a trailing underscore
+    keyword, one of {!Common.inductive_generated_members}, or the enclosing
+    type's own name (which
+    C++ treats as a constructor declaration), the original PascalCase is kept
+    with a trailing underscore
     (e.g. [Char] -> ["Char_"]).
 
     @param type_name  the enclosing inductive type's C++ name, for same-name
@@ -32,7 +34,7 @@ let factory_name_of_ctor ?(type_name = "") ctor_struct_name =
   let collides =
     Id.Set.mem (Id.of_string lc) (get_keywords ())
     || lc = String.lowercase_ascii type_name
-    || List.mem lc Common.inductive_generated_members
+    || Id.Set.mem (Id.of_string lc) Common.inductive_generated_members
   in
   if collides then ctor_struct_name ^ "_"
   else lc
@@ -150,12 +152,12 @@ let compute_field_name ~owner ctor_struct_name field_consarg_names
      way, by falling back to the indexed form. *)
   let type_name = owning_type_name owner in
   let reserved =
-    Id.Set.of_list
-      (List.map Id.of_string
-         ( ctor_struct_name :: type_name
-           :: factory_name_of_ctor ~type_name ctor_struct_name
-           :: Common.inductive_generated_members
-         @ List.init j (field_name_str_of_idx field_consarg_names) ))
+    Id.Set.union Common.inductive_generated_members
+      (Id.Set.of_list
+         (List.map Id.of_string
+            ( ctor_struct_name :: type_name
+              :: factory_name_of_ctor ~type_name ctor_struct_name
+              :: List.init j (field_name_str_of_idx field_consarg_names) ) ))
   in
   let needs_index = Id.Set.mem (Id.of_string base_str) reserved in
   let field_str =
@@ -2146,42 +2148,6 @@ let rec infer_ml_body_type (a : ml_ast) : ml_type option =
   | MLmagic (_, e) -> infer_ml_body_type e
   | _ -> None
 
-(** [codomain_via_receiver callee_ty args] is the receiver's type paired with
-    the template position a call's result occupies in it, where the callee's declared codomain is one of the type variables its
-    first argument's type instantiates -- a projection out of a dependent
-    pair, say.
-
-    The caller reads the result's C++ type off that position of the
-    {e converted} receiver.  Converting the codomain's ML instantiation on its
-    own is not the same thing: a type argument that the receiver's own
-    conversion erases still spells concretely in isolation, and the field it
-    describes is then physically a [std::any] while its ML type denies it. *)
-and codomain_via_receiver callee_ty args =
-  let var_index = function
-    | Miniml.Tvar (_, j) -> Some j
-    | _ -> None
-  in
-  match (var_index (resolve_tmeta (ml_codomain callee_ty)), args) with
-  | Some j, arg :: _ -> (
-    match (ml_value_domains callee_ty, infer_ml_body_type arg) with
-    | dom0 :: _, Some actual -> (
-      match (resolve_tmeta dom0, resolve_tmeta actual) with
-      | Miniml.Tglob (g1, formals, _), (Miniml.Tglob (g2, _, _) as actual)
-        when Common.globref_equal g1 g2 -> (
-        let pos =
-          let rec find i = function
-            | [] -> None
-            | f :: rest ->
-              if var_index (resolve_tmeta f) = Some j then Some i
-              else find (i + 1) rest
-          in
-          find 0 formals
-        in
-        match pos with Some i -> Some (actual, i) | None -> None )
-      | _ -> None )
-    | _ -> None )
-  | _ -> None
-
 (** [tvar_instantiation callee_ty args] is the callee's type-variable
     instantiation, read off the arguments' own ML types.
 
@@ -3025,6 +2991,40 @@ and erase_type_args_to_any = function
     revealed as a box once converted, and a [Type]-valued definition hides one
     behind a [using] alias that {!resolves_to_any_type} follows. *)
 and ml_erases_to_box env t = resolves_to_any_type (cpp_of_ml env t)
+
+(** [result_cpp_via_receiver env callee_ty args] is the C++ type a call's
+    result really has, where the callee's declared codomain is one of the type
+    variables its first argument's type instantiates -- the field a projection
+    out of a dependent pair hands back, say.
+
+    The answer is read off the {e converted} receiver, at the template position
+    the codomain occupies in it.  Converting the codomain's own instantiation
+    instead is not the same thing: a type argument that the receiver's
+    conversion erases still spells concretely in isolation, and the field it
+    describes is then physically a [std::any] while its ML type denies it.
+    [None] means the call is not of this shape, or that the two spellings of
+    the receiver disagree on how many arguments it has -- the position would
+    then name the wrong one. *)
+and result_cpp_via_receiver env callee_ty args =
+  let var_index t = match resolve_tmeta t with Miniml.Tvar (_, j) -> Some j | _ -> None in
+  let position_of j formals =
+    let rec find i = function
+      | [] -> None
+      | f :: rest -> if var_index f = Some j then Some i else find (i + 1) rest
+    in
+    find 0 formals
+  in
+  match (var_index (ml_codomain callee_ty), ml_value_domains callee_ty, args) with
+  | Some j, dom0 :: _, arg :: _ -> (
+    match (resolve_tmeta dom0, Option.map resolve_tmeta (infer_ml_body_type arg)) with
+    | Miniml.Tglob (g1, formals, _), Some (Miniml.Tglob (g2, actuals, _) as recv)
+      when Common.globref_equal g1 g2 -> (
+      match (position_of j formals, template_args (cpp_of_ml env recv)) with
+      | Some i, Some cpp_args when List.length actuals = List.length cpp_args ->
+        List.nth_opt cpp_args i
+      | _ -> None )
+    | _ -> None )
+  | _ -> None
 
 (** [iife_void_return env typ pv] is [Some Tvoid] when the match's branches
     produce nothing: a lambda that may fall off its end has to say [-> void]
@@ -4699,7 +4699,11 @@ and apply_erased_curried ?(box = false) callee arg_exprs =
   List.fold_left
     (fun f a ->
       let a = if box then Cpp_erasure.converting_ctor Tany [a] else a in
-      mk_call (Cpp_erasure.unbox (Tfun ([Tany], Tany)) (f)) [a] )
+      match f with
+      (* A callable boxed right here never lost its type: recovering it would
+         be a cast straight back to what it already was. *)
+      | CPPbox (_, callable) -> mk_call callable [a]
+      | _ -> CPPerased_call (f, a) )
     callee arg_exprs
 
 (** Adapt a function value being stored into a slot whose C++ type is the
@@ -9167,24 +9171,8 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
           match find_type_opt id with
           | Some ml_ty ->
             ml_erases_to_box env (instantiated_codomain ml_ty)
-            || ( match codomain_via_receiver ml_ty primary_ml_args with
-               | Some (recv, i) -> (
-                 (* Its C++ spelling names the same arguments whichever way the
-                    struct is referred to. *)
-                 let rec targs = function
-                   | Tconst t | Tref t | Tshared_ptr t | Tnamespace (_, t) ->
-                     targs t
-                   | Tglob (_, a, _) | Tid (_, a) | Tid_external (_, a)
-                   | Tapply (_, a) -> Some a
-                   | _ -> None
-                 in
-                 match (resolve_tmeta recv, targs (cpp_of_ml env recv)) with
-                 | Miniml.Tglob (_, actuals, _), Some cpp_args
-                   when List.length actuals = List.length cpp_args -> (
-                   match List.nth_opt cpp_args i with
-                   | Some c -> is_boxed_source c
-                   | None -> false )
-                 | _ -> false )
+            || ( match result_cpp_via_receiver env ml_ty primary_ml_args with
+               | Some c -> is_boxed_source c
                | None -> false )
             || result_is_index_only_tvar ml_ty
           | None -> false
@@ -9840,9 +9828,7 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
       let result =
         if !has_unresolved_boxed_arg && not callee_is_bare_any then begin
           Table.mark_needs_erase_fn ();
-          CPPfun_call
-            (call_opaque, CPPvar (Id.of_string "crane_call_erased"),
-              of_reversed (List.rev args @ [callee_expr]) )
+          CPPtolerant_call (callee_expr, args)
         end
         else if callee_is_bare_any then
           apply_erased_curried callee_expr args

@@ -362,6 +362,21 @@ let rec unqualify_ty = function
   | Minicpp.Tconst t | Minicpp.Tnamespace (_, t) -> unqualify_ty t
   | t -> t
 
+(** [template_args t] — the type arguments [t] is applied to, for a [t] that
+    names a template at all.  Which node spells the head is not the question:
+    the same struct arrives as a [Tglob], a [Tid], a [Tid_external] or a
+    [Tapply] depending on how it is referred to, and wrapped in the
+    qualifications {!unqualify_ty} strips.  [None] distinguishes "not a
+    template" from a template applied to nothing. *)
+let rec template_args t =
+  match unqualify_ty t with
+  | Minicpp.Tref t | Minicpp.Tptr t | Minicpp.Tshared_ptr t -> template_args t
+  | Minicpp.Tglob (_, args, _)
+  | Minicpp.Tid (_, args)
+  | Minicpp.Tid_external (_, args)
+  | Minicpp.Tapply (_, args) -> Some args
+  | _ -> None
+
 (** [prints_as_any t] — true if [t] is spelled [std::any] in the generated
     header: either of the two erased type nodes, or a dummy glob left behind by
     proof/type erasure.  This is a question about {e syntax}, not about
