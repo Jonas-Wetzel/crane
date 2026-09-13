@@ -307,6 +307,12 @@ public:
   }
 };
 
+struct Datatypes {
+  template <typename T1, typename T2, typename F0>
+    requires std::is_invocable_r_v<T2, F0 &, T1 &>
+  static std::optional<T2> option_map(F0 &&f, const std::optional<T1> &o);
+};
+
 template <typename A> struct Sig {
   // DATA
   A x;
@@ -381,6 +387,10 @@ public:
 
   // ACCESSORS
   const variant_t &v() const { return v_; }
+};
+
+struct Vector {
+  template <typename T1> static List<T1> to_list(uint64_t n, const T0<T1> &v);
 };
 
 struct T {
@@ -490,16 +500,6 @@ public:
 
 struct Fin {
   static T of_nat_lt(uint64_t p, uint64_t n);
-};
-
-struct Vector {
-  template <typename T1> static List<T1> to_list(uint64_t n, const T0<T1> &v);
-};
-
-struct Datatypes {
-  template <typename T1, typename T2, typename F0>
-    requires std::is_invocable_r_v<T2, F0 &, T1 &>
-  static std::optional<T2> option_map(F0 &&f, const std::optional<T1> &o);
 };
 
 struct PendantSumtreeRoundtripCase {

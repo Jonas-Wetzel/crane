@@ -129,12 +129,12 @@ public:
 
 using tbl = List<uint64_t>;
 
-struct Coord {
-  static inline const tbl table_a = Store::build(List<uint64_t>::nil());
-};
-
 struct Store {
   static tbl build(List<uint64_t> t);
+};
+
+struct Coord {
+  static inline const tbl table_a = Store::build(List<uint64_t>::nil());
 };
 
 const uint64_t answer = Coord::table_a.length();

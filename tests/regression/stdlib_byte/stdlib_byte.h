@@ -263,14 +263,6 @@ enum class Byte {
   XFF
 };
 
-struct Bool {
-  static bool eqb(bool b1, bool b2);
-};
-
-struct Byte0 {
-  static bool eqb0(Byte a, Byte b0);
-};
-
 struct Byte_Mod {
   static std::pair<
       bool,
@@ -282,6 +274,14 @@ struct Byte_Mod {
                   bool,
                   std::pair<bool, std::pair<bool, std::pair<bool, bool>>>>>>>
   to_bits(Byte b0);
+};
+
+struct Bool {
+  static bool eqb(bool b1, bool b2);
+};
+
+struct Byte0 {
+  static bool eqb0(Byte a, Byte b0);
 };
 
 /// Rocq's byte inductive extracts to a C++ enum named Byte, but the

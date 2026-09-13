@@ -190,6 +190,11 @@ template <typename A, typename P> struct SigT {
 
 template <typename a> using EqDec = std::function<bool(a, a)>;
 
+struct EquivDec {
+  template <typename T1>
+  static bool equiv_dec(EqDec<T1> eqDec, const T1 &x0_, T1 x1_);
+};
+
 struct Sumbool {
   static Sig<bool> bool_of_sumbool(bool s);
 };
@@ -206,11 +211,6 @@ struct HAList {
   template <typename T1, typename T2>
   static std::optional<T2> halist_lookup(EqDec<T1> eq, const T1 &k,
                                          const List<SigT<T1, T2>> &l);
-};
-
-struct EquivDec {
-  template <typename T1>
-  static bool equiv_dec(EqDec<T1> eqDec, const T1 &x0_, T1 x1_);
 };
 
 /// halist K V is indexed by a value family V : K -> Type.  Crane gives

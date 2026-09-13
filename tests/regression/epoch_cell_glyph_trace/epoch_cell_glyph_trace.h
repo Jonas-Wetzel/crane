@@ -94,6 +94,10 @@ public:
 };
 enum class Comparison { EQ, LT, GT };
 
+struct Datatypes {
+  static Comparison CompOpp(Comparison r);
+};
+
 struct Positive {
   // TYPES
   struct XI {
@@ -266,10 +270,6 @@ struct Q {
 
 struct QArith_base {
   static bool Qle_bool(const Q &x, const Q &y);
-};
-
-struct Datatypes {
-  static Comparison CompOpp(Comparison r);
 };
 
 struct EpochCellGlyphTraceCase {

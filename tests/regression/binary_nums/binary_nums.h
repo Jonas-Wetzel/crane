@@ -14,6 +14,10 @@ struct N;
 struct Z;
 enum class Comparison { EQ, LT, GT };
 
+struct Datatypes {
+  static Comparison CompOpp(Comparison r);
+};
+
 struct Positive {
   // TYPES
   struct XI {
@@ -280,10 +284,6 @@ struct BinInt {
   static Comparison compare(const Z &x, const Z &y);
   static uint64_t to_nat(const Z &z);
   static Z abs(const Z &z);
-};
-
-struct Datatypes {
-  static Comparison CompOpp(Comparison r);
 };
 
 struct BinaryNums {

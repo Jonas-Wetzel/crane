@@ -1832,6 +1832,11 @@ let prepare_structure s =
     @return Pretty-printer document for the complete output file (header or
             implementation), including lifted declarations and deferred
             out-of-line function definitions. *)
+(** [pp_wrapper_struct name specs] is the struct a library module is rendered
+    as: its member declarations, [specs], inside a struct of that name. *)
+let pp_wrapper_struct name specs =
+  str "struct " ++ str name ++ str " {" ++ fnl () ++ specs ++ fnl () ++ str "};"
+
 let do_struct_with_decl_tracking ~is_header f s =
   ignore (Translation.take_lifted_decls ());
   Hashtbl.clear emitted_member_lifted;
@@ -1931,23 +1936,25 @@ let do_struct_with_decl_tracking ~is_header f s =
       | Some name ->
         let type_sels = List.filter (fun x -> not (is_func_decl x)) sel in
         let type_pp = prlist_sep_nonempty cut2 f type_sels in
-        if Pp.ismt type_pp && is_header then
-          match
-            Hashtbl.find_opt pending_wrapper_decls name
-          with
-          | Some specs ->
-            Hashtbl.remove pending_wrapper_decls name;
-            str "struct "
-            ++ str name
-            ++ str " {"
-            ++ fnl ()
-            ++ specs
-            ++ fnl ()
-            ++ str "};"
-          | None -> mt ()
-        else begin
-          type_pp
-        end
+        (* The wrapper struct belongs at its module's own place in the
+           topological order, whether or not the module also declares types.
+           A later module's constant is initialised inside its struct body, so
+           a callee's struct has to be complete by then -- emitting the
+           wrapper after everything else, as a leftover, is too late.  A
+           module whose types include an eponymous struct has already had the
+           specs merged into it by {!Cpp_print}, and nothing is pending. *)
+        let wrapper_pp =
+          if not is_header then mt ()
+          else
+            match Hashtbl.find_opt pending_wrapper_decls name with
+            | Some specs ->
+              Hashtbl.remove pending_wrapper_decls name;
+              pp_wrapper_struct name specs
+            | None -> mt ()
+        in
+        if Pp.ismt type_pp then wrapper_pp
+        else if Pp.ismt wrapper_pp then type_pp
+        else type_pp ++ cut2 () ++ wrapper_pp
       | None ->
         (* Which children a name collision forces inside a wrapper struct is
            layout, decided by {!Structure_analysis} before any rendering began;
@@ -2093,16 +2100,7 @@ let do_struct_with_decl_tracking ~is_header f s =
     if is_header then
       Hashtbl.fold
         (fun name specs acc ->
-          let wrapper =
-            str "struct "
-            ++ str name
-            ++ str " {"
-            ++ fnl ()
-            ++ specs
-            ++ fnl ()
-            ++ str "};"
-          in
-          acc ++ cut2 () ++ wrapper )
+          acc ++ cut2 () ++ pp_wrapper_struct name specs )
         pending_wrapper_decls
         (mt ())
     else
