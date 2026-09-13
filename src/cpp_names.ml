@@ -139,6 +139,15 @@ let pp_field r fields i = pp_one_field r i (List.nth fields i)
    Helper functions to reduce code duplication
    ============================================================================ *)
 
+(** [mp_encloses outer mp] is whether [mp] is [outer] itself or a module
+    nested inside it. *)
+let rec mp_encloses outer mp =
+  ModPath.equal outer mp
+  ||
+  match mp with
+  | Names.ModPath.MPdot (parent, _) -> mp_encloses outer parent
+  | _ -> false
+
 (** Check if a type name is already qualified (contains ::) *)
 let is_qualified_name name_str = String.contains name_str ':'
 
@@ -453,17 +462,28 @@ let struct_qualifier_for r name_str =
       mt ()
     (* The kernel module path settles the question outright when it is known:
        the type is a member of this struct exactly when it was declared in the
-       module the struct came from.  Ask that before the textual tests below,
-       which compare the struct's C++ name against the type's Rocq path and so
-       give up whenever the module was emitted under a different name -- a
-       duplicate-avoidance rename ([Pos] and [Coq_Pos]) or a collision
-       suffix. *)
+       module the struct came from, or in one nested inside it.  Ask that
+       before the textual tests below, which compare the struct's C++ name
+       against the type's Rocq path and so both give up whenever the module was
+       emitted under a different name -- a duplicate-avoidance rename ([Pos]
+       and [Coq_Pos]) or a collision suffix -- and fire spuriously when the
+       paths merely share a prefix, as they do when the enclosing library is
+       named after the module.  A type declared in a module that neither
+       contains nor is contained by this struct's is not a member of it, so it
+       takes no qualifier at all; only a type from an ancestor module is left
+       to the heuristics, which pick the right ancestor prefix for it. *)
     else if
       match (!render_ctx).rc_struct_mp with
-      | Some mp -> ModPath.equal mp (modpath_of_r r)
+      | Some mp -> mp_encloses mp (modpath_of_r r)
       | None -> false
     then
       struct_name ++ str "::"
+    else if
+      match (!render_ctx).rc_struct_mp with
+      | Some mp -> not (mp_encloses (modpath_of_r r) mp)
+      | None -> false
+    then
+      mt ()
     (* Default: qualify when the type's Rocq path nests under the struct,
        or when the type already carries a qualified C++ name whose Rocq path
        nests under the struct's parent module. *)
@@ -541,14 +561,7 @@ let needs_global_qualifier x =
           (!render_ctx).rc_struct_mp
         with
         | Some struct_mp ->
-          let callee_mp = modpath_of_r x in
-          let rec is_ancestor mp =
-            ModPath.equal callee_mp mp ||
-            match mp with
-            | Names.ModPath.MPdot (parent, _) -> is_ancestor parent
-            | _ -> false
-          in
-          not (is_ancestor struct_mp)
+          not (mp_encloses (modpath_of_r x) struct_mp)
         | None -> true )
   | None -> false
 
