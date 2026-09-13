@@ -696,8 +696,12 @@ let collect_eponymous_records (s : ml_structure) : GlobRef.t list =
                 && match ind.ind_kind with Record _ -> true | _ -> false
               then acc := ind_ref :: !acc )
             ind.ind_packets
-        | SEmodule {ml_mod_expr = MEstruct (_mp, inner_sel); _} ->
-          collect (Label.to_string l) inner_sel
+        | SEmodule {ml_mod_expr = MEstruct (mp, inner_sel); _} ->
+          (* The name that matters is the one the module struct is emitted
+             under, suffix included: a module renamed out of the way of its
+             inductive is no longer eponymous with it, and the merge that
+             renaming was there to prevent must not happen after all. *)
+          collect (Common.emitted_module_name mp) inner_sel
         | _ -> () )
       sel
   in

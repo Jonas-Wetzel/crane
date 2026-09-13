@@ -8837,3 +8837,14 @@
   (alias runtest)
   (deps cross_unit_duplicate_symbol.t.exe)
   (action (run ./cross_unit_duplicate_symbol.t.exe))))
+
+(subdir eponymous_record_own_type
+ (rule
+  (targets eponymous_record_own_type.t.exe)
+  (deps EponymousRecordOwnType.vo eponymous_record_own_type.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} eponymous_record_own_type.t.exe eponymous_record_own_type.cpp eponymous_record_own_type.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps eponymous_record_own_type.t.exe)
+  (action (run ./eponymous_record_own_type.t.exe))))

@@ -225,6 +225,10 @@ val module_label_name : Label.t -> string
     Must be called before any [pp_global] or [pp_module] calls. *)
 val detect_sibling_module_inductive_collisions : ml_structure -> unit
 
+(** The name a module's C++ struct is emitted under, including any suffix
+    {!detect_sibling_module_inductive_collisions} gave it. *)
+val emitted_module_name : ModPath.t -> string
+
 (** The members every inductive's C++ struct declares for itself (the variant
     alias, its accessors, the deep copy).  Whatever else is emitted inside that
     struct has to keep clear of these names. *)

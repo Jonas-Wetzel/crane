@@ -790,12 +790,35 @@ let inductive_names_of_sel sel =
     there instead, and an [enum class] or a coinductive has no such body at
     all, so a module eponymous with one of those has to be renamed. *)
 let unmergeable_inductive_names_of_sel sel =
+  (* A record {e can} absorb the module, but not if the module also declares a
+     value of that very record's type: merged, the value becomes a static data
+     member of the record's own struct, where its type is still incomplete.  A
+     function over the record is fine -- it becomes a method, and a member
+     function's signature may name the class being defined. *)
+  let rec type_head = function
+    | Tglob (GlobRef.IndRef ind, _, _) -> Some ind
+    | Tmeta {contents = Some t} -> type_head t
+    | _ -> None
+  in
+  let self_typed =
+    List.filter_map
+      (fun (_l, se) ->
+        match se with SEdecl (Dterm (_, _, t)) -> type_head t | _ -> None )
+      sel
+  in
   List.concat_map
     (fun (_l, se) ->
       match se with
-      | SEdecl (Dind (_kn, ({ind_kind = Standard | Coinductive; _} as ind))) ->
-        Array.to_list
-          (Array.map (fun p -> modular_rename Type p.ip_typename) ind.ind_packets)
+      | SEdecl (Dind (kn, ind)) ->
+        let mergeable = match ind.ind_kind with Standard | Coinductive -> false | _ -> true in
+        List.filteri
+          (fun i _ ->
+            (not mergeable)
+            || List.exists (Names.Ind.CanOrd.equal (kn, i)) self_typed )
+          (Array.to_list
+             (Array.map
+                (fun p -> modular_rename Type p.ip_typename)
+                ind.ind_packets ) )
       | _ -> [] )
     sel
 
@@ -1312,15 +1335,17 @@ let pp_global_name k r =
     string (a struct field, a method, a [using] alias). *)
 let id_of_global k r = Id.of_string (pp_global_name k r)
 
+(** The name a module's C++ struct is emitted under, including any suffix
+    {!detect_sibling_module_inductive_collisions} gave it. *)
+let emitted_module_name mp = List.hd (mp_renaming mp)
+
 (** Print the type name for an eponymous record reference.  Returns the
     enclosing module name (from [mp_renaming]) so that type references match
     the struct definition name and qualified field accesses.  Eponymous
     detection is case-insensitive, so the record and module names may differ
     in casing (e.g. [Module Shadow] with [Record shadow]).  The struct
     definition uses the module name, so type references must too. *)
-let pp_type_name_capitalized r =
-  let mp = modpath_of_r r in
-  List.hd (mp_renaming mp)
+let pp_type_name_capitalized r = emitted_module_name (modpath_of_r r)
 
 (** Resolve a module path to its name, registering it in the visible scope.
     Has the side effect of {!add_visible}, so it must be called once per
