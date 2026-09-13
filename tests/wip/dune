@@ -194,17 +194,6 @@
   (deps cross_unit_duplicate_symbol.t.exe)
   (action (run ./cross_unit_duplicate_symbol.t.exe))))
 
-(subdir primfloat_self_init
- (rule
-  (targets primfloat_self_init.t.exe)
-  (deps PrimFloatSelfInit.vo primfloat_self_init.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} primfloat_self_init.t.exe primfloat_self_init.cpp primfloat_self_init.t.cpp)))
- (rule
-  (alias runtest)
-  (deps primfloat_self_init.t.exe)
-  (action (run ./primfloat_self_init.t.exe))))
-
 (subdir duplicate_output_target
  (rule
   (targets duplicate_output_target.t.exe)

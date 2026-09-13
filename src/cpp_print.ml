@@ -304,6 +304,19 @@ let spell_binop = function
 (** The C++ source spelling of a unary prefix operator. *)
 let spell_unop = function Unot -> "!" | Uaddr -> "&"
 
+(** The C++ source spelling of a [double] literal.
+
+    [%h] renders the finite values as hexadecimal floating-point literals, which
+    are exact, but renders the infinities and the NaNs as the bare words
+    [infinity] and [nan] — not C++ literals at all, and in a declaration named
+    after the constant they parse as a self-initialisation.  Those three cases
+    are spelled with the compiler builtins instead, which need no include. *)
+let spell_double (x : float) : string =
+  if Float.is_nan x then "__builtin_nan(\"\")"
+  else if x = Float.infinity then "__builtin_inf()"
+  else if x = Float.neg_infinity then "-__builtin_inf()"
+  else Printf.sprintf "%h" x
+
 (** Print a qualified standard-library angle-bracket type: [std::label<s>].
 
     @param label  the identifier after [std::] (e.g. ["variant"], ["function"])
@@ -1958,7 +1971,7 @@ and pp_cpp_expr env args t =
       | Some cpp_type -> str (cpp_type ^ "(" ^ s ^ ")")
       | None -> str s )
     | _ -> str s )
-  | CPPfloat f -> str (Printf.sprintf "%h" (Float64.to_float f))
+  | CPPfloat f -> str (spell_double (Float64.to_float f))
   | CPPconcept_app (concept, subject, tys) ->
     (* A concept is hoisted out of every enclosing struct, so it is named
        unqualified here however deeply the subject is nested. *)

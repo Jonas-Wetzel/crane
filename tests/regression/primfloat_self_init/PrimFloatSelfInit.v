@@ -10,7 +10,7 @@
 
 From Crane Require Import Extraction.
 From Crane Require Import Mapping.Std Mapping.NatIntStd.
-Require Import Floats.
+From Stdlib Require Import Floats.
 
 Module PrimFloatSelfInit.
   Definition inf : float := infinity.

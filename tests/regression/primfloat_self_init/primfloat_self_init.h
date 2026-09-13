@@ -2,8 +2,8 @@
 #define INCLUDED_PRIMFLOAT_SELF_INIT
 
 struct PrimFloat {
-  static inline const double infinity = infinity;
-  static inline const double nan = nan;
+  static inline const double infinity = __builtin_inf();
+  static inline const double nan = __builtin_nan("");
 };
 
 struct PrimFloatSelfInit {
