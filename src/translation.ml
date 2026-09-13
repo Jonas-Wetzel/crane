@@ -293,9 +293,12 @@ type hkt_tvar_position = {
     parameter.  Such a variable is not a C++ template parameter but the
     instance's associated type — see {!Table.get_ind_hkt_params}.
 
-    Instance parameters are numbered in source order, to match [_tcI0],
-    [_tcI1], ... *)
+    Instance parameters are numbered as [Gen_decls.gen_dfun] numbers them --
+    it walks the binders innermost first, so the source-{e last} instance is
+    [_tcI0].  With one instance the two orders coincide; with two they do not,
+    and a signature numbered the other way swaps the functors. *)
 let hkt_tvar_positions_of_type ty =
+  let last = List.length (collect_typeclass_param_ids ty) - 1 in
   let rec go i acc = function
     | Miniml.Tarr (Miniml.Tglob (class_ref, type_args, _), rest)
       when Table.is_typeclass class_ref ->
@@ -307,7 +310,8 @@ let hkt_tvar_positions_of_type ty =
             | ( Some (Miniml.Tvar (_, j) | Miniml.Tapp (j, _)),
                 Some var_name ) ->
               { htp_tvar = j;
-                htp_instance = Minicpp.Tinstance (tc_instance_id i, class_ref);
+                htp_instance =
+                  Minicpp.Tinstance (tc_instance_id (last - i), class_ref);
                 htp_field = var_name }
               :: acc
             | _ -> acc )

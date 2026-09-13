@@ -8677,3 +8677,14 @@
   (alias runtest)
   (deps instance_field_at_fun_type.t.exe)
   (action (run ./instance_field_at_fun_type.t.exe))))
+
+(subdir hkt_instance_arg_order
+ (rule
+  (targets hkt_instance_arg_order.t.exe)
+  (deps HktInstanceArgOrder.vo hkt_instance_arg_order.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} hkt_instance_arg_order.t.exe hkt_instance_arg_order.cpp hkt_instance_arg_order.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps hkt_instance_arg_order.t.exe)
+  (action (run ./hkt_instance_arg_order.t.exe))))

@@ -94,7 +94,7 @@ concept Pointed = requires {
 
 struct HktSingleCtorInstanceBody {
   template <Pointed _tcI0, Ftor _tcI1, typename T2>
-  static typename _tcI1::template F<T2> pnt(const T2 &x) {
+  static typename _tcI0::template F<T2> pnt(const T2 &x) {
     return _tcI0::template pnt<T2>(x);
   }
 
@@ -132,7 +132,7 @@ struct HktSingleCtorInstanceBody {
   static_assert(Pointed<PB>);
 
   template <Pointed _tcI0, Ftor _tcI1>
-  static typename _tcI1::template F<Nat> liftme(const Nat &x2_) {
+  static typename _tcI0::template F<Nat> liftme(const Nat &x2_) {
     return pnt<_tcI0, _tcI1, Nat>(x2_);
   }
 

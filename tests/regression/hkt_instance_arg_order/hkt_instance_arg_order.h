@@ -227,13 +227,13 @@ struct HktInstanceArgOrder {
 
   template <Fn _tcI0, Fn _tcI1, typename T3, typename T4, typename F0>
     requires std::is_invocable_r_v<T4, F0 &, T3 &>
-  static typename _tcI0::template F<typename _tcI1::template F<T4>>
+  static typename _tcI1::template F<typename _tcI0::template F<T4>>
   compose_map(F0 &&f,
-              typename _tcI0::template F<typename _tcI1::template F<T3>> x) {
-    return fm<_tcI1, typename _tcI1::template F<T3>,
-              typename _tcI1::template F<T4>>(
-        [=](typename _tcI1::template F<T3> _x0) mutable ->
-        typename _tcI1::template F<T4> { return fm<_tcI0, T3, T4>(f, _x0); },
+              typename _tcI1::template F<typename _tcI0::template F<T3>> x) {
+    return fm<_tcI1, typename _tcI0::template F<T3>,
+              typename _tcI0::template F<T4>>(
+        [=](typename _tcI0::template F<T3> _x0) mutable ->
+        typename _tcI0::template F<T4> { return fm<_tcI0, T3, T4>(f, _x0); },
         x);
   }
 
