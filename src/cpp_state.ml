@@ -336,6 +336,34 @@ let hoisted_concept_defs : Pp.t list ref = ref []
     emitted at file scope instead. *)
 let file_scope_concepts : Pp.t list ref = ref []
 
+(** A concept a frame is holding back until after the struct it was written
+    in, identified by whatever declares it. *)
+type held_concept =
+  | HCmodtype of Names.ModPath.t  (** a module type's concept *)
+  | HCclass of Names.GlobRef.t  (** a type class's concept *)
+
+(** Equality on {!held_concept}. *)
+let held_concept_equal a b =
+  match (a, b) with
+  | HCmodtype x, HCmodtype y -> Names.ModPath.equal x y
+  | HCclass x, HCclass y -> Names.GlobRef.equal x y
+  | _ -> false
+
+(** The concepts the struct now being rendered has held back: their
+    declarations come after it, so neither a [requires] clause nor a
+    [static_assert] inside it may name them yet. *)
+let held_back_concepts : held_concept list ref = ref []
+
+(** Whether a concept is one the current frame is holding back. *)
+let is_held_back_in held_back c =
+  List.exists (held_concept_equal c) held_back
+
+(** Assertions deferred out of the struct being rendered.  Each entry is the
+    concept held back, its name, and the asserted subject -- qualified as far
+    as the frames it has passed through; the frame that held the concept back
+    emits it. *)
+let deferred_concept_asserts : (held_concept * Pp.t * Pp.t) list ref = ref []
+
 (** [with_render_ctx upd f] renders [f] in the context [upd] derives from the
     current one, and puts the enclosing context back on the way out however [f]
     leaves -- returning or raising.
@@ -871,6 +899,8 @@ let reset_cpp_state () =
   Hashtbl.clear functor_app_sources;
   hoisted_concept_defs := [];
   file_scope_concepts := [];
+  held_back_concepts := [];
+  deferred_concept_asserts := [];
   Common.reset_ctor_field_names ();
   Table.reset_demands ();
   Table.reset_main_function ()

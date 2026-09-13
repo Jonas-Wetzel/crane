@@ -76,12 +76,6 @@ struct PeanoNat {
 /// A class whose method returns a record type.  The concept is emitted at
 /// namespace scope *before* the struct that defines the record, but its body
 /// names ConceptBeforeStruct::mo.
-
-template <typename I, typename A>
-concept HasM = requires {
-  { I::getm() } -> std::convertible_to<ConceptBeforeStruct::mo>;
-};
-
 struct ConceptBeforeStruct {
   struct mo {
     Nat mz;
@@ -92,9 +86,15 @@ struct ConceptBeforeStruct {
     static mo getm() { return mo{Nat::o(), PeanoNat::add}; }
   };
 
-  static_assert(HasM<hn, Nat>);
   static inline const Nat ex =
       hn::getm().mop(Nat::s(Nat::o()), Nat::s(Nat::s(Nat::o())));
 };
+
+template <typename I, typename A>
+concept HasM = requires {
+  { I::getm() } -> std::convertible_to<ConceptBeforeStruct::mo>;
+};
+
+static_assert(HasM<ConceptBeforeStruct::hn, Nat>);
 
 #endif // INCLUDED_CONCEPT_BEFORE_STRUCT

@@ -4223,6 +4223,19 @@ and pp_cpp_decl_raw env (settled : Cpp_erasure.settled) =
           rc_in_struct = true;
           rc_in_template = c.rc_in_template || ds.ds_tparams <> [] } )
       (fun () -> pp_cpp_fields_with_vis ~struct_name env ds.ds_fields)
+  | Dstatic_assert (CPPconcept_app (class_ref, subject, tys), None)
+    when (!render_ctx).rc_in_struct
+         && is_held_back_in !held_back_concepts (HCclass class_ref) ->
+    (* The concept is declared after the struct being rendered, because its
+       requirements name the struct's own types.  The assertion goes with it,
+       and is qualified by the struct on the way out. *)
+    deferred_concept_asserts :=
+      ( HCclass class_ref,
+        pp_concept_name_of_ref class_ref,
+        pp_global Type subject
+        ++ prlist (fun ty -> str ", " ++ pp_cpp_type false [] ty) tys )
+      :: !deferred_concept_asserts;
+    mt ()
   | Dstatic_assert (e, so) ->
     ( match so with
     | None -> h (str "static_assert(" ++ pp_cpp_expr env [] e ++ str ");")

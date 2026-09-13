@@ -514,25 +514,6 @@ let rec concept_of_mt = function
 (** The concept name a module type refers to, when it refers to one. *)
 and get_concept_name_from_mt mt = Option.map snd (concept_of_mt mt)
 
-(** Module types whose concept the struct being rendered has to hold back,
-    because its [requires] clause spells the struct's own types.  A nested
-    module constrained by one of these cannot assert its conformance from
-    inside the struct.
-
-    Identified by module path rather than by the concept's C++ name: two
-    unrelated module types can be emitted under the same short name, and a
-    held-back concept must not silence an assertion that is not about it. *)
-let held_back_concepts : ModPath.t list ref = ref []
-
-(** Whether a module type is one the current frame is holding back. *)
-let is_held_back_in held_back mp = List.exists (ModPath.equal mp) held_back
-
-(** Assertions deferred out of the struct being rendered.  Each entry is the
-    module type held back, its concept's name and the asserted struct's, the
-    latter qualified as far as the frames it has passed through; the frame that
-    held the concept back emits it. *)
-let deferred_concept_asserts : (ModPath.t * Pp.t * Pp.t) list ref = ref []
-
 (** The one spelling of "this struct satisfies this concept".  Both the
     immediate assertion and the deferred one go through here, so the two cannot
     drift apart. *)
@@ -546,10 +527,11 @@ let concept_assert_pp name mty =
   match concept_of_mt mty with
   | None -> mt ()
   | Some (mt_mp, concept_name) ->
-    if (!render_ctx).rc_in_struct && is_held_back_in !held_back_concepts mt_mp
+    let held = HCmodtype mt_mp in
+    if (!render_ctx).rc_in_struct && is_held_back_in !held_back_concepts held
     then (
       deferred_concept_asserts :=
-        (mt_mp, concept_name, name) :: !deferred_concept_asserts;
+        (held, concept_name, name) :: !deferred_concept_asserts;
       mt () )
     else pp_concept_assert concept_name name
 
@@ -922,7 +904,10 @@ let rec pp_structure_elem ~is_header f = function
                        | TypeClass fields ->
                          let ind_ref = GlobRef.IndRef (kn, i) in
                          let packet = ind.ind_packets.(i) in
-                         let concept_pp =
+                         let concept_pp, mentions_outer =
+                           watching_for_reference_to
+                             (Pp.string_of_ppcmds name)
+                           @@ fun () ->
                            pp_cpp_decl
                              (empty_env ())
                              (Gen_decls.gen_typeclass_cpp
@@ -931,7 +916,7 @@ let rec pp_structure_elem ~is_header f = function
                                 packet )
                          in
                          let doc = pp_doc_comment l in
-                         [doc ++ concept_pp]
+                         [(HCclass ind_ref, doc ++ concept_pp, mentions_outer)]
                        | _ -> [] ) )
                 | _ -> [] )
               sel
@@ -943,16 +928,28 @@ let rec pp_structure_elem ~is_header f = function
            preceding their own struct. *)
         let typeclass_concepts =
           if old_context then (
-            file_scope_concepts := !file_scope_concepts @ typeclass_concepts;
+            file_scope_concepts :=
+              !file_scope_concepts
+              @ List.map (fun (_, c, _) -> c) typeclass_concepts;
             [] )
           else typeclass_concepts
+        in
+        (* A concept whose [requires] clause names one of the enclosing
+           struct's own types cannot be emitted before that struct, whether it
+           came from a module type or from a type class. *)
+        let hold_back_after concepts =
+          List.partition (fun (_, _, mentions_outer) -> not mentions_outer)
+            concepts
+        in
+        let typeclass_concepts, typeclass_concepts_after =
+          hold_back_after typeclass_concepts
         in
         let typeclasses_pp =
           if typeclass_concepts = [] then
             mt ()
           else
             fnl ()
-            ++ prlist_with_sep fnl (fun x -> x) typeclass_concepts
+            ++ prlist_with_sep fnl (fun (_, c, _) -> c) typeclass_concepts
             ++ fnl ()
             ++ fnl ()
         in
@@ -995,23 +992,21 @@ let rec pp_structure_elem ~is_header f = function
                       let all = List.append hoisted [main_concept] in
                       prlist_with_sep (fun () -> fnl () ++ fnl ()) identity all
                   in
-                  Some (MPdot (mp, l), concept_pp, mentions_outer)
+                  Some (HCmodtype (MPdot (mp, l)), concept_pp, mentions_outer)
                 | _ -> None )
               sel
           else
             []
         in
-        (* A concept whose [requires] clause names one of the enclosing
-           struct's own types cannot be emitted before that struct.  Such a
-           concept is held back and emitted after it instead; the others keep
-           their place, since the struct's body may constrain a functor with
-           them. *)
+        (* Such a concept is held back and emitted after the struct instead;
+           the others keep their place, since the struct's body may constrain
+           a functor with them. *)
         let modtype_concepts, modtype_concepts_after =
-          List.partition (fun (_, _, mentions_outer) -> not mentions_outer)
-            modtype_concepts
+          hold_back_after modtype_concepts
         in
         let this_held_back =
-          List.map (fun (mt_mp, _, _) -> mt_mp) modtype_concepts_after
+          List.map (fun (key, _, _) -> key)
+            (typeclass_concepts_after @ modtype_concepts_after)
         in
         let concepts_group_pp concepts =
           if concepts = [] then
@@ -1032,11 +1027,12 @@ let rec pp_structure_elem ~is_header f = function
           else (modtype_concepts, modtype_concepts_after)
         in
         let modtypes_pp = concepts_group_pp modtype_concepts in
+        let concepts_after = typeclass_concepts_after @ modtype_concepts_after in
         let modtypes_after_pp =
-          if modtype_concepts_after = [] then
+          if concepts_after = [] then
             mt ()
           else
-            fnl () ++ fnl () ++ concepts_group_pp modtype_concepts_after
+            fnl () ++ fnl () ++ concepts_group_pp concepts_after
         in
         (* Determine if this module should be promoted: eponymous inductive
            (not record) where the module struct IS the type directly. *)

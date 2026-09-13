@@ -148,6 +148,25 @@ val hoisted_concept_defs : Pp.t list ref
     struct -- is collected here and emitted at file scope instead. *)
 val file_scope_concepts : Pp.t list ref
 
+(** A concept a frame is holding back until after the struct it was written
+    in, identified by whatever declares it. *)
+type held_concept =
+  | HCmodtype of Names.ModPath.t  (** a module type's concept *)
+  | HCclass of Names.GlobRef.t  (** a type class's concept *)
+
+(** Equality on {!held_concept}. *)
+val held_concept_equal : held_concept -> held_concept -> bool
+
+(** The concepts the struct now being rendered has held back. *)
+val held_back_concepts : held_concept list ref
+
+(** Whether a concept is one the current frame is holding back. *)
+val is_held_back_in : held_concept list -> held_concept -> bool
+
+(** Assertions deferred out of the struct being rendered: the concept held
+    back, its name, and the asserted subject. *)
+val deferred_concept_asserts : (held_concept * Pp.t * Pp.t) list ref
+
 (** [with_render_ctx upd f] renders [f] in the context [upd] derives from the
     current one, restoring the enclosing context on the way out however [f]
     leaves -- returning or raising. The only supported way to change the

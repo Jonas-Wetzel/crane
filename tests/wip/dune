@@ -111,16 +111,6 @@
   (deps cps_continuation_copy.t.exe)
   (action (run ./cps_continuation_copy.t.exe))))
 
-(subdir concept_before_struct
- (rule
-  (targets concept_before_struct.t.exe)
-  (deps ConceptBeforeStruct.vo concept_before_struct.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} concept_before_struct.t.exe concept_before_struct.cpp concept_before_struct.t.cpp)))
- (rule
-  (alias runtest)
-  (deps concept_before_struct.t.exe)
-  (action (run ./concept_before_struct.t.exe))))
 
 (subdir curried_tvar_instantiation
  (rule
