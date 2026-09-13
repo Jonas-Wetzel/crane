@@ -225,6 +225,16 @@ val module_label_name : Label.t -> string
     Must be called before any [pp_global] or [pp_module] calls. *)
 val detect_sibling_module_inductive_collisions : ml_structure -> unit
 
+(** The members every inductive's C++ struct declares for itself (the variant
+    alias, its accessors, the deep copy).  Whatever else is emitted inside that
+    struct has to keep clear of these names. *)
+val inductive_generated_members : string list
+
+(** Record that [r] is emitted as a member of its inductive's struct, so that
+    its C++ name avoids {!inductive_generated_members}.  Must be called before
+    any [pp_global] for [r]. *)
+val reserve_methodified : GlobRef.t -> unit
+
 (** Get module paths of all visible layers. *)
 val get_visible_mps : unit -> ModPath.t list
 

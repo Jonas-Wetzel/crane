@@ -7,11 +7,10 @@
      Definition v         -> clashes with the accessor   const variant_t &v() const
      Definition variant_t -> clashes with the type alias using variant_t = ...
 
-   Both produce C++ that does not compile ("functions that differ only in
-   their return type cannot be overloaded", "redefinition of 'variant_t' as a
-   different kind of symbol").  A user-chosen Rocq name should never be able
-   to collide with a generated member; the factory names already get this
-   treatment via [factory_name_of_ctor]. *)
+   A user-chosen Rocq name must not be able to collide with a generated
+   member, so a methodified constant is renamed away from them -- [v] becomes
+   [v0] and [variant_t] becomes [variant_t0] -- the same treatment the factory
+   names get via [factory_name_of_ctor]. *)
 From Crane Require Import Extraction.
 From Crane Require Import Mapping.NatIntStd.
 

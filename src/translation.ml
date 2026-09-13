@@ -21,8 +21,7 @@ include Ml_type_util
 (** Compute the factory method name for a constructor.
     Factory names are the lowercase of the constructor struct name
     (e.g. [Cons] -> ["cons"]). If the lowercased name collides with a C++
-    keyword, a generated name ([v], [v_mut], [clone], [variant_t]), or the
-    enclosing type's own name (which C++ treats as a constructor declaration),
+    keyword, one of {!Common.inductive_generated_members}, or the enclosing type's own name (which C++ treats as a constructor declaration),
     the original PascalCase is kept with a trailing underscore
     (e.g. [Char] -> ["Char_"]).
 
@@ -30,13 +29,10 @@ include Ml_type_util
                       collision detection (default [""]) *)
 let factory_name_of_ctor ?(type_name = "") ctor_struct_name =
   let lc = String.lowercase_ascii ctor_struct_name in
-  let reserved_generated_names =
-    [ "v"; "v_"; "v_mut"; "clone"; "variant_t" ]
-  in
   let collides =
     Id.Set.mem (Id.of_string lc) (get_keywords ())
     || lc = String.lowercase_ascii type_name
-    || List.mem lc reserved_generated_names
+    || List.mem lc Common.inductive_generated_members
   in
   if collides then ctor_struct_name ^ "_"
   else lc

@@ -378,6 +378,9 @@ let register_into
     (epon_ref : GlobRef.t)
     (this_pos : int)
     ~(ind_tvar_positions : int list) =
+  (* The function is emitted inside its inductive's struct, so the naming layer
+     has to keep its C++ name clear of the members that struct generates. *)
+  Common.reserve_methodified func_ref;
   Hashtbl.replace
     tbl
     func_ref

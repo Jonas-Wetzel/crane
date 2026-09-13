@@ -215,9 +215,9 @@ struct MethodifiedMemberNameClash {
     // ACCESSORS
     const variant_t &v() const { return v_; }
 
-    uint64_t variant_t() const { return UINT64_C(1); }
+    uint64_t variant_t0() const { return UINT64_C(1); }
 
-    uint64_t v() const { return UINT64_C(0); }
+    uint64_t v0() const { return UINT64_C(0); }
 
     template <typename T1, typename F0, typename F1>
       requires std::is_invocable_r_v<T1, F0 &, other &> &&

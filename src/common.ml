@@ -536,6 +536,27 @@ let sibling_collision_renames : (ModPath.t, string) Hashtbl.t =
 
 let () = register_cleanup (fun () -> Hashtbl.clear sibling_collision_renames)
 
+(** The members every inductive's C++ struct declares for itself: the variant
+    alias, its accessors and the deep copy.  Anything else that ends up inside
+    that struct -- a constructor's factory ({!Translation.factory_name_of_ctor})
+    or a methodified constant ({!reserve_methodified}) -- has to keep clear of
+    them. *)
+let inductive_generated_members = [ "v"; "v_"; "v_mut"; "clone"; "variant_t" ]
+
+let inductive_generated_member_set =
+  Id.Set.of_list (List.map Id.of_string inductive_generated_members)
+
+(* The constants emitted as members of an inductive's struct rather than as
+   free functions.  Methodification is decided from the whole structure, before
+   any name is printed, so the naming layer is told which references it applies
+   to rather than asking. *)
+let methodified_refs = ref Refset'.empty
+
+let () = register_cleanup (fun () -> methodified_refs := Refset'.empty)
+
+let reserve_methodified r = methodified_refs := Refset'.add r !methodified_refs
+let is_methodified_ref r = Refset'.mem r !methodified_refs
+
 (** Create a fresh de Bruijn environment with current global ids. *)
 let empty_env () = ([], get_global_ids ())
 
@@ -994,10 +1015,18 @@ let ref_renaming_fun (k, r) =
           | _ -> None
         in
         let key = if is_ind then ctor_cpp_id else fun id -> id in
+        (* A methodified constant is declared inside the struct of its
+           inductive, beside the members that struct generates for itself, so
+           it may not be spelled like one of them. *)
+        let is_generated_member id =
+          is_methodified_ref r
+          && Id.Set.mem id inductive_generated_member_set
+        in
         let rec fresh id =
           if
             Id.Set.mem (key id) siblings
             || Option.equal String.equal (Some (Id.to_string id)) own_struct_name
+            || is_generated_member id
           then
             fresh (increment_subscript id)
           else
