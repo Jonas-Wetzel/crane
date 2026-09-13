@@ -87,17 +87,16 @@ struct HktRecordDict {
         f.fmd(crane_erase_fn(x), crane_container_cast<T1<std::any>>(x0)));
   }
 
-  static inline const FnD<std::optional<std::any>> optd = []() {
-    return FnD<std::optional<std::any>>{[=](const auto &f,
-                                            const auto &o) mutable {
-      if (o.has_value()) {
-        const auto &x = *o;
-        return std::make_optional<std::any>(std::any(crane_call_erased(f, x)));
-      } else {
-        return std::optional<std::any>();
-      }
-    }};
-  }();
+  static inline const FnD<std::optional<std::any>> optd =
+      FnD<std::optional<std::any>>{[](const auto &f, const auto &o) {
+        if (o.has_value()) {
+          const auto &x = *o;
+          return std::make_optional<std::any>(
+              std::any(crane_call_erased(f, x)));
+        } else {
+          return std::optional<std::any>();
+        }
+      }};
   static inline const std::optional<Nat> ex = fmd(
       optd, [](Nat x) { return Nat::s(x); },
       std::make_optional<Nat>(Nat::s(Nat::o())));

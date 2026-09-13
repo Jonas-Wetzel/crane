@@ -5,7 +5,7 @@
     [Store.build]. *)
 
 From Stdlib Require Import List.
-From CraneTestsWIP Require Import const_init_forward_ref.Store.
+From CraneTestsRegression Require Import const_init_forward_ref.Store.
 Import ListNotations.
 
 Definition table_a : tbl := build nil.

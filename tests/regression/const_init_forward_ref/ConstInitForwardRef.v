@@ -33,7 +33,7 @@
 From Crane Require Import Extraction.
 From Crane Require Import Mapping.Std Mapping.NatIntStd.
 From Stdlib Require Import List.
-From CraneTestsWIP Require Import const_init_forward_ref.Coord.
+From CraneTestsRegression Require Import const_init_forward_ref.Coord.
 Import ListNotations.
 
 Definition answer : nat := length table_a.
