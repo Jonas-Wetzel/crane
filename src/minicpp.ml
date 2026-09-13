@@ -618,6 +618,18 @@ let recurry_to n ty =
     Tfun (outer, curry_fun_type (Tfun (inner, cod)))
   | _ -> if n = 0 then curry_fun_type ty else ty
 
+(** [recurry_to_opt n ty] is [recurry_to n ty] where the declaration's arity
+    actually respells [ty], and [None] where it leaves it alone.
+
+    A site that has a second, usually better source for a type -- a constructor
+    knows the instantiation it was built at, which the parameter type may have
+    erased -- defers to the slot only for the one thing the slot alone can say:
+    how the arrows are curried.  Asking here keeps that judgement with the
+    rewrite that makes it. *)
+let recurry_to_opt n ty =
+  let recurried = recurry_to n ty in
+  if recurried = ty then None else Some recurried
+
 (** [subst_cpp_tvars sub ty] replaces every [Tvar (i, _)] in [ty] by
     [sub i], leaving the substituted type alone.
 

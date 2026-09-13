@@ -178,7 +178,23 @@ val unqualify_ty : Minicpp.cpp_type -> Minicpp.cpp_type
     type may be boxed or cast, for which see {!is_boxed_type}. *)
 val prints_as_any : Minicpp.cpp_type -> bool
 
-(** True of a function type whose whole signature erased to [std::any]. *)
+(** What erasure did to a function type's domain, and -- where the domain
+    erased -- what it did to the result.  Every C++ type is exactly one of
+    these. *)
+type fun_erasure =
+  | Fe_not_a_function
+  | Fe_concrete_domain  (** a function type, no argument erased *)
+  | Fe_erased_domain of Minicpp.cpp_type option
+      (** at least one argument erased; the payload is the result type the
+          signature kept, or [None] when the result erased too *)
+
+(** Classify a C++ type by {!fun_erasure}.  The single place a function type's
+    domain is tested for erasure; the predicates below are named shorthands for
+    its answers. *)
+val classify_fun_erasure : Minicpp.cpp_type -> fun_erasure
+
+(** True of a function type whose whole signature erased to [std::any].
+    Stricter than [Fe_erased_domain None]. *)
 val is_fully_erased_fun_ty : Minicpp.cpp_type -> bool
 
 (** True of a function type that erased its arguments but kept a concrete
@@ -186,8 +202,9 @@ val is_fully_erased_fun_ty : Minicpp.cpp_type -> bool
 val partially_erased_fun_ty : Minicpp.cpp_type -> bool
 
 (** True of a function type that erased at least one argument, whichever way its
-    result went: the union of the two predicates above, and the condition under
-    which a closure needs the [crane_erase_fn] adapter to reach the slot. *)
+    result went: the condition under which a closure needs the [crane_erase_fn]
+    adapter to reach the slot.  Strictly weaker than
+    {!partially_erased_fun_ty}, and independent of {!is_fully_erased_fun_ty}. *)
 val erased_domain_fun_ty : Minicpp.cpp_type -> bool
 
 (** Whether a value of this type is known to live inside a [std::any], and so

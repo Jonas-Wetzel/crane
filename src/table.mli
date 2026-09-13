@@ -229,6 +229,10 @@ val ind_param_vars :
 (** Add inductive kind to table. *)
 val add_inductive_kind : MutInd.t -> inductive_kind -> unit
 
+(** The recorded kind of the inductive a reference belongs to, if any.  Every
+    question about an inductive's kind is answered from this. *)
+val inductive_kind_of : GlobRef.t -> inductive_kind option
+
 (** Check if reference is coinductive. *)
 val is_coinductive : GlobRef.t -> bool
 

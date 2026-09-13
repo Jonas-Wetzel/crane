@@ -4588,27 +4588,28 @@ and erase_fn_for_any_slot e expr =
     polymorphic in its own type argument, [forall A, (A -> A) -> A -> A]):
     a concrete closure does not convert to the erased signature. *)
 and erase_fn_arg_for_param env param_ml_ty e expr =
+  (* The callee has already written this parameter down, so any [Topaque] in
+     it has been spelled [std::any] in the header and the slot really is
+     boxed. *)
+  let param_cpp_ty = materialise_opaque (cpp_of_ml env param_ml_ty) in
   let erased_fn_param =
-    match
-      (* The callee has already written this parameter down, so any [Topaque]
-         in it has been spelled [std::any] in the header and the slot really
-         is boxed. *)
-      materialise_opaque
-        (cpp_of_ml env param_ml_ty)
-    with
-    (* A parameter that erases only its ARGUMENTS (its result stays concrete,
-       e.g. [std::function<typename I::M(std::any)>] for a higher-kinded class
-       method) keeps that result type: erasing it too would box the result
-       twice. *)
-    | Tfun (_, cod) as t when partially_erased_fun_ty t -> Some (Some cod)
-    | Tfun (dom, cod) when cod = Tany || List.mem Tany dom -> Some None
-    (* The whole parameter is boxed -- a type-level [Fixpoint] landing on
-       [using sem = std::any], say.  A callee that applies such a value goes
-       through the canonical [std::function<std::any(std::any...)>] adapter,
-       so a raw closure dropped into the [std::any] would not match the cast
-       that reads it back out. *)
-    | ty when resolves_to_any_type ty -> Some None
-    | _ -> None
+    match classify_fun_erasure param_cpp_ty with
+    (* An erased domain takes the adapter, at whatever result the signature
+       kept: a parameter that erases only its ARGUMENTS (e.g.
+       [std::function<typename I::M(std::any)>] for a higher-kinded class
+       method) keeps that result type, since erasing it too would box the
+       result twice. *)
+    | Fe_erased_domain kept -> Some kept
+    | Fe_concrete_domain | Fe_not_a_function -> (
+      match param_cpp_ty with
+      | Tfun (_, cod) when cod = Tany -> Some None
+      (* The whole parameter is boxed -- a type-level [Fixpoint] landing on
+         [using sem = std::any], say.  A callee that applies such a value goes
+         through the canonical [std::function<std::any(std::any...)>] adapter,
+         so a raw closure dropped into the [std::any] would not match the cast
+         that reads it back out. *)
+      | ty when resolves_to_any_type ty -> Some None
+      | _ -> None )
   in
   match erased_fn_param with
   | Some ret_ty when ml_expr_is_function_value e ->
@@ -8296,14 +8297,25 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
          variable has arity zero, so its value is curried throughout.  The
          callee's parameters are indexed from its class-dictionary arguments,
          which [regular_ml_args] does not include. *)
-      let param_expected_at_declared_arity () =
-        let j = i + List.length typeclass_ml_args in
-        match List.nth_opt fn_param_ml_tys_orig j with
+      let param_index = i + List.length typeclass_ml_args in
+      (* Just the re-currying: [None] where the declaration's arity is already
+         the shape the substituted parameter type has, so a producer that has
+         its own better source keeps it. *)
+      let param_expected_recurried () =
+        match List.nth_opt fn_param_ml_tys_orig param_index with
         | Some orig ->
-          Option.map
-            (recurry_to (count_ml_value_arrows orig))
-            (param_expected_cpp_ty ~at:j fn_param_ml_tys)
+          Option.bind
+            (param_expected_cpp_ty ~at:param_index fn_param_ml_tys)
+            (recurry_to_opt (count_ml_value_arrows orig))
         | None -> None
+      in
+      let param_expected_at_declared_arity () =
+        match param_expected_recurried () with
+        | Some _ as t -> t
+        | None -> (
+          match List.nth_opt fn_param_ml_tys_orig param_index with
+          | Some _ -> param_expected_cpp_ty ~at:param_index fn_param_ml_tys
+          | None -> None )
       in
       (* The callee declares this parameter as one of its own template
          parameters [Tvar j], and some {e other} parameter carries that same
@@ -8314,7 +8326,7 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
          [std::any], boxing here would be the only thing making the deduction
          disagree. *)
       let param_tvar_erased =
-        let this = i + List.length typeclass_ml_args in
+        let this = param_index in
         let rec mentions j = function
           | Miniml.Tvar (_, j') -> j = j'
           | Miniml.Tglob (_, ts, _) -> List.exists (mentions j) ts
@@ -8347,8 +8359,7 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
         | MLlam _ -> param_expected_at_declared_arity ()
         | _ ->
         ( match
-            match List.nth_opt fn_param_ml_tys_orig
-                    (i + List.length typeclass_ml_args) with
+            match List.nth_opt fn_param_ml_tys_orig param_index with
             | Some (Miniml.Tvar (_, _)) ->
               param_expected_at_declared_arity ()
             | _ -> None
@@ -8367,21 +8378,12 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
            and reaches the slot at the arity the callee declared the parameter
            at, for the same reason a lambda does. *)
         | MLapp _ -> param_expected_at_declared_arity ()
-        (* A constructed value is spelled here for the first time, so only
-           the slot can say how its type arguments are curried -- but only
-           where the currying is in fact what the annotation would get wrong.
-           Anywhere else the constructor's own annotation is the better
-           source: it knows this producer's instantiation, which the
-           parameter type may have erased. *)
-        | MLcons _
-          when (match
-                  ( param_expected_at_declared_arity (),
-                    param_expected_cpp_ty
-                      ~at:(i + List.length typeclass_ml_args) fn_param_ml_tys )
-                with
-               | Some recurried, Some plain -> not (recurried = plain)
-               | _ -> false) ->
-          param_expected_at_declared_arity ()
+        (* A constructed value is spelled here for the first time, so only the
+           slot can say how its type arguments are curried.  Everything else
+           about the type the constructor's own annotation knows better: it
+           carries this producer's instantiation, which the parameter type may
+           have erased.  So take the currying and nothing else. *)
+        | MLcons _ -> param_expected_recurried ()
         | _ -> None ) )
       in
       let arg_expected_ml_ty =
@@ -8494,7 +8496,7 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
         in
         match Cpp_names.lookup_method_this_pos id with
         | Some pos
-          when pos = i + List.length typeclass_ml_args && receiver_is_boxed -> (
+          when pos = param_index && receiver_is_boxed -> (
           match param_expected_cpp_ty fn_param_ml_tys with
           | Some into when not (prints_as_any into) ->
             coerce ~from:Tany ~into expr

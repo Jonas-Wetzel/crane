@@ -663,6 +663,11 @@ val curry_fun_type : cpp_type -> cpp_type
     throughout. *)
 val recurry_to : int -> cpp_type -> cpp_type
 
+(** [recurry_to_opt n ty] is [recurry_to n ty] where the declaration's arity
+    actually respells [ty], and [None] where it leaves it alone -- for sites
+    that want the slot's word on the currying and nothing else. *)
+val recurry_to_opt : int -> cpp_type -> cpp_type option
+
 (** [subst_cpp_tvars sub ty] replaces every [Tvar (i, _)] in [ty] by [sub i].
 
     Unlike {!map_cpp_type}, the replacement is not traversed again, so a

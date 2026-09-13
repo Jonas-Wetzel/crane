@@ -311,14 +311,24 @@ let init_inductive_kinds () = inductive_kinds := Mindmap_env.empty
 let add_inductive_kind kn k =
   inductive_kinds := Mindmap_env.add kn k !inductive_kinds
 
-let is_coinductive r =
+(** The recorded kind of the inductive [r] belongs to, if any.  Every question
+    about an inductive's kind goes through here, so none of them can disagree
+    about which references even have one. *)
+let inductive_kind_of r =
   let open GlobRef in
   match r with
   | ConstructRef ((kn, _), _) | IndRef (kn, _) ->
-    ( match Mindmap_env.find_opt kn !inductive_kinds with
-    | Some Coinductive -> true
-    | _ -> false )
-  | ConstRef _ | VarRef _ -> false
+    Mindmap_env.find_opt kn !inductive_kinds
+  | ConstRef _ | VarRef _ -> None
+
+(** Whether a global reference names a type class.  Defined here, with the
+    other kind queries, because the higher-kinded parameter table below is
+    restricted by it. *)
+let is_typeclass r =
+  match inductive_kind_of r with Some (TypeClass _) -> true | _ -> false
+
+let is_coinductive r =
+  match inductive_kind_of r with Some Coinductive -> true | _ -> false
 
 let has_any_coinductive () =
   Mindmap_env.exists (fun _ kind -> kind == Coinductive) !inductive_kinds
@@ -444,14 +454,7 @@ let get_record_fields r =
     holds the implicit arguments field selection dropped, so the two lists can
     differ in length and the pairing is then lost. *)
 let get_record_field_bindings r =
-  let kn =
-    let open GlobRef in
-    match r with
-    | ConstructRef ((kn, _), _) -> Some kn
-    | IndRef (kn, _) -> Some kn
-    | _ -> None
-  in
-  match Option.bind kn (fun kn -> Mindmap_env.find_opt kn !inductive_kinds) with
+  match inductive_kind_of r with
   | Some (Record f | TypeClass f) -> f
   | _ -> []
 
@@ -542,16 +545,8 @@ let get_ind_hkt_params_arities r =
      plain record is a value, and its parameter is the carrier already
      applied -- [FnD<std::optional<std::any>>], not [FnD<std::optional>].
      Extraction records the positions before the kind is known, so the
-     restriction is made here, where every consumer reads them. *)
-  let is_class =
-    match r with
-    | ConstructRef ((kn, _), _) | IndRef (kn, _) ->
-      ( match Mindmap_env.find_opt kn !inductive_kinds with
-      | Some (Miniml.TypeClass _) -> true
-      | _ -> false )
-    | _ -> false
-  in
-  if not is_class then []
+     restriction is made here -- the one place every consumer reads them. *)
+  if not (is_typeclass r) then []
   else try Refmap'.find r !hkt_params_table with Not_found -> []
 
 (** Positions (0-based among the [Keep] type parameters) of [r]'s parameters
@@ -660,16 +655,6 @@ let get_ctor_num_param_vars r =
       with Not_found | Invalid_argument _ -> 0 )
   | _ -> 0
 
-
-(** Checks if a global reference refers to a typeclass inductive type. *)
-let is_typeclass r =
-  let open GlobRef in
-  match r with
-  | ConstructRef ((kn, _), _) | IndRef (kn, _) ->
-    ( match Mindmap_env.find_opt kn !inductive_kinds with
-    | Some (TypeClass _) -> true
-    | _ -> false )
-  | _ -> false (* ConstRef, VarRef are not type classes *)
 
 let is_typeclass_type = function
   | Tglob (r, _, _) -> is_typeclass r

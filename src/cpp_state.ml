@@ -773,9 +773,12 @@ let register_method_param_cpp_types (func_ref : GlobRef.t)
   Method_registry.register_method_param_cpp_types
     (get_method_registry ()) func_ref tys
 
-(** The C++ types of a registered method's non-receiver parameters, or [[]] if
-    they were never recorded. *)
-let method_param_cpp_types (func_ref : GlobRef.t) : Minicpp.cpp_type list =
+(** The C++ types of a registered method's non-receiver parameters, or [None]
+    when its declaration has not been generated yet: generation and printing
+    interleave, so a use site can be printed before the declaration it names
+    and must have something to fall back on. *)
+let method_param_cpp_types (func_ref : GlobRef.t) :
+    Minicpp.cpp_type list option =
   Method_registry.lookup_method_param_cpp_types (get_method_registry ()) func_ref
 
 (** Check if a method is registered as returning std::any or bsl::any. *)

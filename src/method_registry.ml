@@ -36,11 +36,14 @@ type method_info = {
           when the registration site had no type to count from.  Consumers use
           it to build a lambda of the right shape when the method is passed
           around as a function value. *)
-  param_cpp_types : Minicpp.cpp_type list;
+  param_cpp_types : Minicpp.cpp_type list option;
       (** The C++ types the method's non-receiver parameters were declared at,
-          in declaration order; [[]] until the declaration is generated.  A
-          consumer that turns the method back into a function value needs them
-          to spell the forwarding lambda's parameters concretely. *)
+          in declaration order, or [None] while the declaration has not been
+          generated yet -- which a reader must expect, since declaration
+          generation and printing interleave.  [Some []] is a method that takes
+          nothing but its receiver, and is not the same answer.  A consumer
+          that turns the method back into a function value needs these to spell
+          the forwarding lambda's parameters concretely. *)
 }
 
 (** A method candidate: (func_ref, body, type, this_pos). *)
@@ -385,7 +388,7 @@ let register_into
       returns_any = false;
       (* computed later by [compute_returns_any] *)
       arity;
-      param_cpp_types = [];
+      param_cpp_types = None;
     }
 
 (** Register all eligible methods for a given eponymous type from a list of
@@ -1020,12 +1023,13 @@ let register_method_param_cpp_types (reg : t) (func_ref : GlobRef.t)
     (tys : Minicpp.cpp_type list) =
   match Hashtbl.find_opt reg.methods func_ref with
   | Some info ->
-    Hashtbl.replace reg.methods func_ref {info with param_cpp_types = tys}
+    Hashtbl.replace reg.methods func_ref {info with param_cpp_types = Some tys}
   | None -> ()
 
 (** The C++ types of a registered method's non-receiver parameters, in
-    declaration order, or [[]] when they were never recorded. *)
+    declaration order, or [None] when its declaration has not been generated
+    yet -- or when there is no such method at all. *)
 let lookup_method_param_cpp_types (reg : t) (func_ref : GlobRef.t) =
   match Hashtbl.find_opt reg.methods func_ref with
   | Some info -> info.param_cpp_types
-  | None -> []
+  | None -> None

@@ -371,12 +371,36 @@ let rec unqualify_ty = function
 let prints_as_any t =
   t = Minicpp.Tany || t = Minicpp.Topaque || is_cpp_dummy_type t
 
+(** What erasure did to a function type's {e domain}, and -- where it left the
+    domain erased -- what it did to the result.  Every C++ type is exactly one
+    of these, so a site that asks the question has to say which answer it is
+    prepared for. *)
+type fun_erasure =
+  | Fe_not_a_function
+  | Fe_concrete_domain  (** a function type, no argument erased *)
+  | Fe_erased_domain of Minicpp.cpp_type option
+      (** at least one argument erased; the payload is the result type the
+          signature kept, or [None] when the result erased along with the
+          arguments *)
+
+(** Classify a C++ type by {!fun_erasure}.  This is the one place a function
+    type's domain is tested for erasure; the predicates below are named
+    shorthands for its answers and cannot drift from it. *)
+let classify_fun_erasure = function
+  | Minicpp.Tfun (dom, cod) ->
+    if not (List.exists prints_as_any dom) then Fe_concrete_domain
+    else Fe_erased_domain (if prints_as_any cod then None else Some cod)
+  | _ -> Fe_not_a_function
+
 (** [is_fully_erased_fun_ty t] -- true if [t] is a function type whose whole
     signature has erased to [std::any], as [std::function<std::any(std::any)>]
     has.  Such a signature pins nothing down, so a parameter at that type has
     nothing to gain from being generalised into a deduced callable -- and a
     definition that keeps it stays an ordinary function, usable as a value of
-    the very type its Rocq signature names. *)
+    the very type its Rocq signature names.
+
+    Stricter than [Fe_erased_domain None], which is content with {e some} of
+    the arguments surviving. *)
 let is_fully_erased_fun_ty t =
   match t with
   | Minicpp.Tfun (dom, cod) ->
@@ -389,18 +413,21 @@ let is_fully_erased_fun_ty t =
     was written at the concrete domain, so it reaches the slot through the
     [crane_erase_fn] adapter -- taken at the slot's own result type, since
     erasing that too would box the result twice. *)
-let partially_erased_fun_ty = function
-  | Minicpp.Tfun (dom, cod) ->
-    (not (prints_as_any cod)) && List.exists prints_as_any dom
+let partially_erased_fun_ty t =
+  match classify_fun_erasure t with
+  | Fe_erased_domain (Some _) -> true
   | _ -> false
 
 (** [erased_domain_fun_ty t] -- true of a function type that erased at least one
-    of its arguments, whether or not it also erased its result.  This is the
-    union of {!partially_erased_fun_ty} and {!is_fully_erased_fun_ty}, and it is
-    the condition under which a closure written at the concrete domain needs the
-    [crane_erase_fn] adapter: nothing converts to such a signature on its own. *)
-let erased_domain_fun_ty = function
-  | Minicpp.Tfun (dom, _) -> List.exists prints_as_any dom
+    of its arguments, whichever way its result went.  This is the condition
+    under which a closure written at the concrete domain needs the
+    [crane_erase_fn] adapter: nothing converts to such a signature on its own.
+
+    Strictly weaker than {!partially_erased_fun_ty}, and neither implies nor is
+    implied by {!is_fully_erased_fun_ty}. *)
+let erased_domain_fun_ty t =
+  match classify_fun_erasure t with
+  | Fe_erased_domain _ -> true
   | _ -> false
 
 (** [is_boxed_type t] — true if a value of type [t] is known to be physically
