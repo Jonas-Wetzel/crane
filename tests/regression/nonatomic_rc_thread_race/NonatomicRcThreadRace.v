@@ -1,12 +1,13 @@
-(* Crane accepts [Set Crane NonAtomicRc] together with [Monads.Thread] and
-   emits, in one file, both [std::thread] and the non-atomic [crane::rc]
-   refcount.  Two spawned threads that share an inductive value then race on
-   that refcount: copying the shared list increments a plain [size_t], so the
-   count is lost and the cells are freed while still reachable.
+(* [Set Crane NonAtomicRc] is a promise that the extracted program is
+   single-threaded, so its reference counts need no atomics.  This unit breaks
+   that promise: it also uses [Monads.Thread], and two spawned threads share an
+   inductive value, so a non-atomic count would be lost and the cells freed
+   while still reachable.
 
-   Nothing in the Rocq source is unsafe -- the program is pure, uses no
-   axioms, and shares an immutable value between threads.  The unsoundness is
-   entirely in the flag combination Crane allows without a diagnostic. *)
+   Crane does not take the promise on trust.  A unit that reaches a custom
+   extraction spelled in terms of <thread> keeps [std::shared_ptr], and says so
+   with the [crane-non-atomic-rc-concurrent] warning.  The program below is
+   pure and uses no axioms; it must run cleanly under the sanitizers. *)
 From Corelib Require Import PrimInt63 PrimString.
 From Crane Require Extraction.
 From Crane Require Import Mapping.Std Mapping.NatIntStd Monads.ITree Monads.IO Monads.Thread.

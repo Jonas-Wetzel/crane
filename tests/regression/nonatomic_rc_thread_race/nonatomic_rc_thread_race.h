@@ -1,8 +1,8 @@
 #ifndef INCLUDED_NONATOMIC_RC_THREAD_RACE
 #define INCLUDED_NONATOMIC_RC_THREAD_RACE
 
-#include "rc.h"
 #include "small_vector.h"
+#include <atomic>
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -21,7 +21,7 @@ struct NonatomicRcThreadRace {
 
     struct Cons {
       uint64_t a0;
-      crane::rc<lst> a1;
+      std::shared_ptr<lst> a1;
     };
 
     using variant_t = std::variant<Nil, Cons>;
@@ -41,12 +41,12 @@ struct NonatomicRcThreadRace {
     static lst nil() { return lst(Nil{}); }
 
     static lst cons(uint64_t a0, lst a1) {
-      return lst(Cons{a0, crane::make_rc<lst>(std::move(a1))});
+      return lst(Cons{a0, std::make_shared<lst>(std::move(a1))});
     }
 
     // MANIPULATORS
     ~lst() {
-      crane::small_vector<crane::rc<lst>> _stack = {};
+      crane::small_vector<std::shared_ptr<lst>> _stack = {};
       auto _drain = [&](variant_t &_v) {
         if (auto *_alt = std::get_if<Cons>(&_v)) {
           if (_alt->a1) {
@@ -59,6 +59,7 @@ struct NonatomicRcThreadRace {
         auto _cur = std::move(_stack.back());
         _stack.pop_back();
         if (_cur.use_count() == 1) {
+          std::atomic_thread_fence(std::memory_order_acquire);
           _drain(_cur->v_mut());
         }
       }

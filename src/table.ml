@@ -1925,8 +1925,12 @@ let reset_extraction_reuse () = Lib.add_leaf (reset_reuse ())
 (* This option swaps the recursive-field smart pointer from [std::shared_ptr]
    (atomic refcount) to [crane::rc] (non-atomic, single-allocation).  Sound only
    for single-threaded extracted code, which is Crane's clone-at-boundary model.
-   Global string swap via [Cpp_state.init_std_names]; opt-in, default off. *)
-let {Goptions.get = non_atomic_rc} =
+   Global string swap via [Cpp_state.init_std_names]; opt-in, default off.
+
+   This is what the user *asked for*; what the unit actually gets is
+   [non_atomic_rc] below, which withholds the swap from a unit that spawns
+   threads.  Nothing outside this file reads the request directly. *)
+let {Goptions.get = non_atomic_rc_requested} =
   declare_bool_option_and_ref ~key:["Crane"; "NonAtomicRc"] ~value:false ()
 
 (* --- Scoped-arena master switch -------------------------------------- *)
@@ -1950,20 +1954,6 @@ let {Goptions.get = non_atomic_rc} =
    reintroduce the old per-type deep-clone/composite-hang failure mode. *)
 let {Goptions.get = arena_enabled} =
   declare_bool_option_and_ref ~key:["Crane"; "Arena"] ~value:false ()
-
-(* Resolved smart-pointer names for string-level codegen (kept here, in a low
-   module, so both [Cpp_state.init_std_names] and the string-building sites in
-   Translation/Gen_decls agree without a module cycle).  [Crane NonAtomicRc]
-   selects the namespace-neutral [crane::rc]; otherwise the std/BDE flavor. *)
-let shared_ptr_name () =
-  if non_atomic_rc () then Crane_rt.rc
-  else if std_lib () = "BDE" then "bsl::shared_ptr"
-  else "std::shared_ptr"
-
-let make_shared_name () =
-  if non_atomic_rc () then Crane_rt.make_rc
-  else if std_lib () = "BDE" then "bsl::make_shared"
-  else "std::make_shared"
 
 (* Suffix of a dotted kernel-name-string path: the last [n] '.'-separated
    components. Used as a fallback match key for functor-internal
@@ -2980,6 +2970,46 @@ let get_custom_imports () =
       StringSet.empty
   in
   StringSet.elements (StringSet.union !custom_imports used_imports)
+
+(* The header whose presence means this unit can spawn a thread. *)
+let concurrency_header = "thread"
+
+let unit_is_concurrent () =
+  List.exists (String.equal concurrency_header) (get_custom_imports ())
+
+(* [Crane NonAtomicRc] is a promise about the extracted program: that it is
+   single-threaded, so a refcount needs no atomics. A unit that reaches a
+   custom extraction spelled in terms of <thread> breaks that promise, and a
+   non-atomic refcount shared between threads corrupts the heap. The promise is
+   therefore not taken on trust: it holds only where this unit's used customs
+   say no thread is spawned. *)
+let non_atomic_rc () = non_atomic_rc_requested () && not (unit_is_concurrent ())
+
+(* Resolved smart-pointer names for string-level codegen (kept here, in a low
+   module, so both [Cpp_state.init_std_names] and the string-building sites in
+   Translation/Gen_decls agree without a module cycle).  [Crane NonAtomicRc]
+   selects the namespace-neutral [crane::rc]; otherwise the std/BDE flavor. *)
+let shared_ptr_name () =
+  if non_atomic_rc () then Crane_rt.rc
+  else if std_lib () = "BDE" then "bsl::shared_ptr"
+  else "std::shared_ptr"
+
+let make_shared_name () =
+  if non_atomic_rc () then Crane_rt.make_rc
+  else if std_lib () = "BDE" then "bsl::make_shared"
+  else "std::make_shared"
+
+let warn_non_atomic_rc_concurrent =
+  CWarnings.create ~name:"crane-non-atomic-rc-concurrent"
+    ~category:CWarnings.CoreCategories.extraction (fun () ->
+      Pp.str
+        "Set Crane NonAtomicRc is ignored in this unit: it spawns threads, and \
+         a non-atomic reference count shared between threads corrupts the \
+         heap. Falling back to std::shared_ptr." )
+
+let check_non_atomic_rc_request () =
+  if non_atomic_rc_requested () && unit_is_concurrent () then
+    warn_non_atomic_rc_concurrent ()
 
 let extract_callback optstr x =
   if lang () != Cpp then

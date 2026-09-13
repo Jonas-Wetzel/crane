@@ -1231,6 +1231,9 @@ let print_structure_to_file ?(namespace = None) (fn, si, mo) dry struc =
   (* Scan the structure to find which custom constants are actually used, so
      that only their associated imports appear in the generated header. *)
   mark_used_customs struc;
+  (* The used customs decide whether this unit can spawn a thread, which is
+     what resolves a [Crane NonAtomicRc] request. *)
+  Table.check_non_atomic_rc_request ();
   mark_higher_order_projections struc;
   demote_value_typeclasses struc;
   (* Detect whether any custom inline function is applied to a string literal.

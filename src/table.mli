@@ -725,9 +725,23 @@ val reset_extraction_reuse : unit -> unit
     open).  True for every type except those opted out via [Crane NoArena]. *)
 val should_use_arena_at_runtime : GlobRef.t -> bool
 
-(** Check if non-atomic reference counting ([crane::rc]) is enabled, swapping
-    [std::shared_ptr]/[std::make_shared] for [crane::rc]/[crane::make_rc]. *)
+(** Whether non-atomic reference counting ([crane::rc]) is in effect for this
+    unit, swapping [std::shared_ptr]/[std::make_shared] for
+    [crane::rc]/[crane::make_rc].  This is the resolved answer, not the raw
+    [Set Crane NonAtomicRc] request: the request is a promise that the
+    extracted program is single-threaded, and it is withheld from a unit that
+    spawns threads (see {!check_non_atomic_rc_request}).  Only meaningful once
+    the unit's used custom extractions have been marked. *)
 val non_atomic_rc : unit -> bool
+
+(** Whether this unit reaches a custom extraction spelled in terms of
+    [<thread>], i.e. whether the extracted code can spawn a thread. *)
+val unit_is_concurrent : unit -> bool
+
+(** Warn, once per unit, if [Set Crane NonAtomicRc] was requested but withheld
+    because the unit is concurrent.  Call after the unit's used custom
+    extractions have been marked and before any code generation. *)
+val check_non_atomic_rc_request : unit -> unit
 
 (** [Set Crane Arena]: whether the runtime scoped-arena factory
     ([crane::arena_make_shared] / [crane::rc<T>::make]) is emitted for recursive
