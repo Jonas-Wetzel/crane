@@ -2096,12 +2096,14 @@ let do_struct_with_decl_tracking ~is_header f s =
     clear_local_inductives ();
     List.iter add_local_inductive old_local_inductives
   end;
-  (* Every pending name came from [wrapper_names], and rendering that module
-     consumes it: either {!Cpp_print} merged the specs into an eponymous
-     struct, or [ppl] emitted them as a struct of their own.  A name still
-     pending here is one whose module was never rendered, and emitting it as a
-     leftover at the end of the file would put it after its users. *)
-  if Sys.getenv_opt "CRANE_CHECK_IR" <> None then
+  (* Every pending name came from [wrapper_names], and rendering that module in
+     the header consumes it: either {!Cpp_print} merged the specs into an
+     eponymous struct, or [ppl] emitted them as a struct of their own.  A name
+     still pending there is one whose module was never rendered, and emitting
+     it as a leftover at the end of the file would put it after its users.  The
+     implementation file declares no wrapper structs at all, so specs left
+     pending by its pass are simply unused. *)
+  if is_header && Sys.getenv_opt "CRANE_CHECK_IR" <> None then
     Hashtbl.iter
       (fun name _ ->
         CErrors.user_err
