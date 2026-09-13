@@ -1811,6 +1811,11 @@ let prepare_structure s =
   List.iter (fun _ -> pop_visible ()) initial_mps;
   structure_analysis := Some analysis
 
+(** [pp_wrapper_struct name specs] is the struct a library module is rendered
+    as: its member declarations, [specs], inside a struct of that name. *)
+let pp_wrapper_struct name specs =
+  str "struct " ++ str name ++ str " {" ++ fnl () ++ specs ++ fnl () ++ str "};"
+
 (** Main structure renderer with declaration tracking.
 
     PASS 1: Process all wrapper modules to populate pending_wrapper_decls. PASS
@@ -1832,11 +1837,6 @@ let prepare_structure s =
     @return Pretty-printer document for the complete output file (header or
             implementation), including lifted declarations and deferred
             out-of-line function definitions. *)
-(** [pp_wrapper_struct name specs] is the struct a library module is rendered
-    as: its member declarations, [specs], inside a struct of that name. *)
-let pp_wrapper_struct name specs =
-  str "struct " ++ str name ++ str " {" ++ fnl () ++ specs ++ fnl () ++ str "};"
-
 let do_struct_with_decl_tracking ~is_header f s =
   ignore (Translation.take_lifted_decls ());
   Hashtbl.clear emitted_member_lifted;
@@ -2096,16 +2096,20 @@ let do_struct_with_decl_tracking ~is_header f s =
     clear_local_inductives ();
     List.iter add_local_inductive old_local_inductives
   end;
-  let remaining_wrappers =
-    if is_header then
-      Hashtbl.fold
-        (fun name specs acc ->
-          acc ++ cut2 () ++ pp_wrapper_struct name specs )
-        pending_wrapper_decls
-        (mt ())
-    else
-      mt ()
-  in
+  (* Every pending name came from [wrapper_names], and rendering that module
+     consumes it: either {!Cpp_print} merged the specs into an eponymous
+     struct, or [ppl] emitted them as a struct of their own.  A name still
+     pending here is one whose module was never rendered, and emitting it as a
+     leftover at the end of the file would put it after its users. *)
+  if Sys.getenv_opt "CRANE_CHECK_IR" <> None then
+    Hashtbl.iter
+      (fun name _ ->
+        CErrors.user_err
+          Pp.(
+            str "Crane: wrapper struct '" ++ str name
+            ++ str "' was never emitted: its module is not in the rendered \
+                    order." ) )
+      pending_wrapper_decls;
   Hashtbl.clear pending_wrapper_decls;
   let pass2_lifted = Translation.take_lifted_decls () |> dedup_lifted_decls in
   let pass2_pre_pp, pass2_post_pp =
@@ -2147,8 +2151,8 @@ let do_struct_with_decl_tracking ~is_header f s =
   let p =
     prlist_sep_nonempty cut2 (fun x -> x)
       ( match main_entry with
-      | Some main_p -> [p_pre; remaining_wrappers; pass2_pre_pp; main_p]
-      | None -> [p_pre; remaining_wrappers] )
+      | Some main_p -> [p_pre; pass2_pre_pp; main_p]
+      | None -> [p_pre] )
   in
   if not (modular ()) then
     repeat (List.length wrapper_names) pop_visible ();
