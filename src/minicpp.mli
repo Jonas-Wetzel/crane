@@ -483,6 +483,20 @@ and cpp_expr =
           surrounding template, so the [crane_fn.h] helper decides.  Produced
           by {!Cpp_erasure.resolve_casts}, never by translation. *)
   | CPPerase_fn of cpp_type option * cpp_expr
+  | CPPerased_call of cpp_expr * cpp_expr
+      (** Applies a callable whose representation was erased, recovering it at
+          the one signature {!CPPerase_fn} stores it under:
+          [std::any_cast<std::function<std::any(std::any)>>(f)(a)].  Unary by
+          construction -- nothing about a boxed callable says how many
+          arguments it takes, since the producer's lambda stops at the first
+          codomain that erases -- so an application of several arguments is a
+          chain of these, and the result of each is a [std::any]. *)
+  | CPPtolerant_call of cpp_expr * cpp_expr list
+      (** [crane_call_erased(f, args...)] — applies a callable whose parameter
+          types are only known once C++ instantiates the enclosing template,
+          and which the helper recovers by CTAD.  Unlike {!CPPfun_call} the
+          arguments are in source order: the helper takes the callee first, so
+          there is no reversed list to align with. *)
   | CPPfn_value of cpp_expr
       (** [std::function(expr)] — gives a callable a nameable type, deduced
           from it by [std::function]'s CTAD.  A closure's own type cannot be

@@ -113,15 +113,15 @@ let is_method (n : GlobRef.t) : bool =
 
 (** [returns_a_box e] -- [e] is a call whose result is declared [std::any], so
     reading it at a concrete type needs a cast.  Method results are the only
-    boxed-return positions the registry tracks; a nested [any_cast] counts too,
-    because the tolerant caster hands back a box. *)
+    boxed-return positions the registry tracks; an application through the
+    erased convention counts too, since that convention hands back a box. *)
 let returns_a_box = function
   | CPPaccess_call (Aarrow, CPPglob (n, _, _), _, _) ->
     Cpp_state.method_returns_any n
   | CPPfun_call (_, CPPglob (n, _, _), _) when is_method n ->
     Cpp_state.method_returns_any n
   | CPPfun_call (_, CPPget' (_, n), _) -> Cpp_state.method_returns_any n
-  | CPPfun_call (_, CPPany_cast _, _) -> true
+  | CPPerased_call _ -> true
   | _ -> false
 
 (** [castable_to ty] -- [ty] names something [any_cast] can ask for.  A type
@@ -141,14 +141,11 @@ let note_alias id ty =
   if is_any_shaped ty then any_type_aliases := Id.Set.add id !any_type_aliases
 
 (** [applies_erased_callee e] -- [e] applies a callable that was recovered
-    from a box with an [any_cast], so its result is a box too however concrete
-    the position it lands in is.  Unlike a call to a named function, whose
-    declared result type is already right, this one cannot be: the erased
-    convention hands back [std::any]. *)
-let rec applies_erased_callee = function
-  | CPPfun_call (_, CPPany_cast (Tfun _, _), _) -> true
-  | CPPfun_call (_, f, _) -> applies_erased_callee f
-  | _ -> false
+    from a box, so its result is a box too however concrete the position it
+    lands in is.  Unlike a call to a named function, whose declared result
+    type is already right, this one cannot be: the erased convention hands
+    back [std::any]. *)
+let applies_erased_callee = function CPPerased_call _ -> true | _ -> false
 
 (** [boxed_var boxed e] -- [e] reads a binder that is declared [std::any]. *)
 let rec boxed_var boxed = function

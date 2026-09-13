@@ -2191,6 +2191,24 @@ and pp_cpp_expr env args t =
     ++ str "("
     ++ pp_cpp_expr env args e
     ++ str ")"
+  | CPPerased_call (f, a) ->
+    (* The one signature a callable is erased into storage at, so the one it
+       can be recovered at; each application yields a [std::any] in turn. *)
+    require_header "any";
+    require_header "functional";
+    str (sn ()).any_cast
+    ++ str "<"
+    ++ pp_cpp_type false [] (Tfun ([Tany], Tany))
+    ++ str ">("
+    ++ pp_cpp_expr env args f
+    ++ str ")("
+    ++ pp_cpp_expr env args a
+    ++ str ")"
+  | CPPtolerant_call (f, call_args) ->
+    str Crane_rt.call_erased
+    ++ str "("
+    ++ prlist_with_sep pr_comma (pp_cpp_expr env args) (f :: call_args)
+    ++ str ")"
   | CPPfn_value e ->
     require_header "functional";
     str "std::function(" ++ pp_cpp_expr env args e ++ str ")"
@@ -2811,7 +2829,7 @@ and expr_is_any_returning_method = function
   | CPPfun_call (_, CPPglob (n, _, _), _) when lookup_method_this_pos n <> None ->
     method_returns_any n
   | CPPfun_call (_, CPPget' (_, n), _) -> method_returns_any n
-  | CPPfun_call (_, CPPany_cast _, _) -> true
+  | CPPerased_call _ -> true
   | _ -> false
 
 (** Check if an expression is a variable (possibly wrapped in [CPPmove])
@@ -3322,11 +3340,7 @@ let erased_into_storage_ids body =
   let rec check_expr e =
     ( match e with
     | CPPerase_fn (_, inner) -> add ids inner
-    (* [crane_call_erased] takes the callee first, and every [CPPfun_call]
-       stores its arguments reversed, so the callee ends the list. *)
-    | CPPfun_call (_, CPPvar f, {rev = (_ :: _ as args)})
-      when String.equal (Id.to_string f) "crane_call_erased" ->
-      add ids (List.nth args (List.length args - 1))
+    | CPPtolerant_call (callee, _) -> add ids callee
     (* Applied here, so the signature does have something to claim -- even if
        the same callback is also handed to a helper elsewhere in the body. *)
     | CPPfun_call (_, callee, _) -> add applied callee

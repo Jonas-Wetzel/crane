@@ -717,6 +717,9 @@ let rec collect_expr (check : call_checker) expr =
   | CPPfun_call (_, f, args) ->
     collect_expr check f
     @ List.concat_map (collect_expr check) (to_reversed args)
+  | CPPerased_call (f, a) -> collect_expr check f @ collect_expr check a
+  | CPPtolerant_call (f, args) ->
+    collect_expr check f @ List.concat_map (collect_expr check) args
   | CPPaccess_call (Aarrow, obj, _id, args) ->
     collect_expr check obj @ List.concat_map (collect_expr check) args
   | CPPaccess_call (Adot, obj, _id, args) ->

@@ -402,6 +402,19 @@ and cpp_expr =
        erased representation std::function<Ret(std::any...)>.  [None] means the
        result is erased too (Ret = std::any); [Some t] keeps the codomain, for
        a consumer that erases only the argument types. *)
+  | CPPerased_call of cpp_expr * cpp_expr
+    (* std::any_cast<std::function<std::any(std::any)>>(f)(a) -- applies a
+       callable whose representation was erased, recovering it at the one
+       signature {!CPPerase_fn} stores it under.  Unary by construction:
+       nothing about a boxed callable says how many arguments it takes, since
+       the producer's lambda stops at the first codomain that erases, so an
+       application of several arguments is a chain of these. *)
+  | CPPtolerant_call of cpp_expr * cpp_expr list
+    (* crane_call_erased(f, args...) -- applies a callable whose parameter
+       types are only known once C++ instantiates the enclosing template, and
+       which the helper recovers by CTAD.  Unlike {!CPPfun_call} the arguments
+       are in source order: the helper takes the callee first, so there is no
+       reversed list to align with. *)
   | CPPfn_value of cpp_expr
     (* std::function(expr) — gives a callable a nameable type, deduced from
        it by std::function's CTAD.  A closure's own type cannot be spelled,
@@ -875,6 +888,8 @@ let map_expr
   | CPPany_cast (ty, e') -> CPPany_cast (ft ty, fe e')
   | CPPany_cast_tolerant (ty, e') -> CPPany_cast_tolerant (ft ty, fe e')
   | CPPerase_fn (ty, e') -> CPPerase_fn (Option.map ft ty, fe e')
+  | CPPerased_call (f, a) -> CPPerased_call (fe f, fe a)
+  | CPPtolerant_call (f, args) -> CPPtolerant_call (fe f, List.map fe args)
   | CPPfn_value e' -> CPPfn_value (fe e')
   | CPPcontainer_cast (ty, e', sb) -> CPPcontainer_cast (ft ty, fe e', sb)
   | CPPstd_get_if (ty, e') -> CPPstd_get_if (ft ty, fe e')
@@ -961,6 +976,8 @@ let iter_expr_children ~on_expr ~on_stmts (e : cpp_expr) : unit =
   | CPPbool _ | CPPint _
   | CPPconcept_app _ | CPPthis | CPPshared_from_this _ -> ()
   | CPPfun_call (_, f, args) -> on_expr f; List.iter on_expr args.rev
+  | CPPerased_call (f, a) -> on_expr f; on_expr a
+  | CPPtolerant_call (f, args) -> on_expr f; List.iter on_expr args
   | CPPconverting_ctor (_, args) -> List.iter on_expr args
   | CPPbox (_, e') -> on_expr e'
   | CPPnamespace (_, e') | CPPderef e' | CPPmove e' | CPPforward (_, e')
@@ -1040,6 +1057,8 @@ let fold_expr_children ~(on_expr : 'a -> cpp_expr -> 'a)
   | CPPconcept_app _ | CPPthis | CPPshared_from_this _ -> acc
   | CPPlambda l -> on_stmts acc l.cl_body
   | CPPfun_call (_, fn, args) -> List.fold_left fe (fe acc fn) args.rev
+  | CPPerased_call (f, a) -> fe (fe acc f) a
+  | CPPtolerant_call (f, args) -> List.fold_left fe (fe acc f) args
   | CPPconverting_ctor (_, args) -> List.fold_left fe acc args
   | CPPbox (_, e') -> fe acc e'
   | CPPnamespace (_, e') | CPPderef e' | CPPmove e' | CPPforward (_, e')

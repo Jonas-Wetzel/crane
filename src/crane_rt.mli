@@ -48,6 +48,11 @@ val erase_fn : string
 (** [crane_erase_fn<Ret>] -- adapt a concrete callable to the canonical erased
     signature. *)
 
+val call_erased : string
+(** [crane_call_erased] -- apply a callable whose parameter types are only
+    known once C++ instantiates the enclosing template, recovering them by
+    CTAD. *)
+
 (** {2 Containers} *)
 
 val small_vector : string  (** [crane::small_vector<T>] *)
