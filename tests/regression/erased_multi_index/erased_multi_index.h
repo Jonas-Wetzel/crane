@@ -20,34 +20,34 @@ struct ErasedMultiIndex {
   struct tagged {
     // DATA
     std::any k;
-    std::any v;
+    std::any v_1;
 
     // ACCESSORS
-    tagged clone() const { return {k, v}; }
+    tagged clone() const { return {k, v_1}; }
 
     // CREATORS
-    static tagged mktagged(std::any k, std::any v) {
-      return {std::move(k), std::move(v)};
+    static tagged mktagged(std::any k, std::any v_1) {
+      return {std::move(k), std::move(v_1)};
     }
 
     template <typename T2> T2 get_val() const {
-      const auto &[k, v0] = *this;
-      return std::any_cast<T2>(v0);
+      const auto &[k, v_1] = *this;
+      return std::any_cast<T2>(v_1);
     }
 
     template <typename T1> T1 get_key() const {
-      const auto &[k0, v] = *this;
+      const auto &[k0, v_1] = *this;
       return std::any_cast<T1>(k0);
     }
 
     template <typename T1, typename F0> T1 tagged_rec(F0 &&f) const {
-      const auto &[k0, v0] = *this;
-      return crane_call_erased(f, k0, v0);
+      const auto &[k0, v_1] = *this;
+      return crane_call_erased(f, k0, v_1);
     }
 
     template <typename T1, typename F0> T1 tagged_rect(F0 &&f) const {
-      const auto &[k0, v0] = *this;
-      return crane_call_erased(f, k0, v0);
+      const auto &[k0, v_1] = *this;
+      return crane_call_erased(f, k0, v_1);
     }
   };
 

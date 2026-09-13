@@ -8782,3 +8782,36 @@
   (alias runtest)
   (deps deep_arith_nesting.t.exe)
   (action (run ./deep_arith_nesting.t.exe))))
+
+(subdir factory_name_collision
+ (rule
+  (targets factory_name_collision.t.exe)
+  (deps FactoryNameCollision.vo factory_name_collision.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} factory_name_collision.t.exe factory_name_collision.cpp factory_name_collision.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps factory_name_collision.t.exe)
+  (action (run ./factory_name_collision.t.exe))))
+
+(subdir generated_member_name_collision
+ (rule
+  (targets generated_member_name_collision.t.exe)
+  (deps GeneratedMemberNameCollision.vo generated_member_name_collision.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} generated_member_name_collision.t.exe generated_member_name_collision.cpp generated_member_name_collision.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps generated_member_name_collision.t.exe)
+  (action (run ./generated_member_name_collision.t.exe))))
+
+(subdir ctor_field_shadows_type
+ (rule
+  (targets ctor_field_shadows_type.t.exe)
+  (deps CtorFieldShadowsType.vo ctor_field_shadows_type.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} ctor_field_shadows_type.t.exe ctor_field_shadows_type.cpp ctor_field_shadows_type.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps ctor_field_shadows_type.t.exe)
+  (action (run ./ctor_field_shadows_type.t.exe))))

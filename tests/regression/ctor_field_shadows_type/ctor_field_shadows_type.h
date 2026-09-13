@@ -7,28 +7,28 @@
 struct CtorFieldShadowsType {
   struct t {
     // DATA
-    uint64_t t;
+    uint64_t t_0;
     uint64_t extra;
 
     // ACCESSORS
-    t clone() const { return {t, extra}; }
+    t clone() const { return {t_0, extra}; }
 
     // CREATORS
-    static t mk(uint64_t t, uint64_t extra) { return {t, extra}; }
+    static t mk(uint64_t t_0, uint64_t extra) { return {t_0, extra}; }
   };
 
   template <typename T1, typename F0>
     requires std::is_invocable_r_v<T1, F0 &, uint64_t &, uint64_t &>
   static T1 t_rect(F0 &&f, const t &t0) {
-    const auto &[t2, extra0] = t0;
-    return f(t2, extra0);
+    const auto &[t_0, extra0] = t0;
+    return f(t_0, extra0);
   }
 
   template <typename T1, typename F0>
     requires std::is_invocable_r_v<T1, F0 &, uint64_t &, uint64_t &>
   static T1 t_rec(F0 &&f, const t &t0) {
-    const auto &[t2, extra0] = t0;
-    return f(t2, extra0);
+    const auto &[t_0, extra0] = t0;
+    return f(t_0, extra0);
   }
 
   static uint64_t total(const t &x);

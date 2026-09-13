@@ -230,10 +230,10 @@ val detect_sibling_module_inductive_collisions : ml_structure -> unit
     struct has to keep clear of these names. *)
 val inductive_generated_members : string list
 
-(** Record that [r] is emitted as a member of its inductive's struct, so that
-    its C++ name avoids {!inductive_generated_members}.  Must be called before
-    any [pp_global] for [r]. *)
-val reserve_methodified : GlobRef.t -> unit
+(** Record that [r] is emitted as a member of the struct of inductive [ind], so
+    that its C++ name avoids {!inductive_generated_members} and [ind]'s factory
+    methods.  Must be called before any [pp_global] for [r]. *)
+val reserve_methodified : ind:GlobRef.t -> GlobRef.t -> unit
 
 (** Get module paths of all visible layers. *)
 val get_visible_mps : unit -> ModPath.t list

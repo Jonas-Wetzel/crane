@@ -78,8 +78,7 @@ struct FactoryNameCollision {
     // ACCESSORS
     const variant_t &v() const { return v_; }
 
-    /// Methodified onto lst: its C++ name must stay clear of Nil's factory.
-    uint64_t nil() const {
+    uint64_t nil0() const {
       if (std::holds_alternative<typename lst::Nil>(this->v())) {
         return UINT64_C(0);
       } else {
@@ -183,11 +182,11 @@ struct FactoryNameCollision {
       uint64_t a0;
     };
 
-    struct MK {
+    struct MK0 {
       uint64_t a0;
     };
 
-    using variant_t = std::variant<Mk, MK>;
+    using variant_t = std::variant<Mk, MK0>;
 
   private:
     // DATA
@@ -199,11 +198,11 @@ struct FactoryNameCollision {
 
     explicit cased(Mk _v) : v_(std::move(_v)) {}
 
-    explicit cased(MK _v) : v_(std::move(_v)) {}
+    explicit cased(MK0 _v) : v_(std::move(_v)) {}
 
     static cased mk(uint64_t a0) { return cased(Mk{a0}); }
 
-    static cased mk(uint64_t a0) { return cased(MK{a0}); }
+    static cased mk0(uint64_t a0) { return cased(MK0{a0}); }
 
     // MANIPULATORS
     inline variant_t &v_mut() { return v_; }
@@ -216,7 +215,7 @@ struct FactoryNameCollision {
         const auto &[a0] = std::get<typename cased::Mk>(this->v());
         return a0;
       } else {
-        const auto &[a0] = std::get<typename cased::MK>(this->v());
+        const auto &[a0] = std::get<typename cased::MK0>(this->v());
         return (a0 + UINT64_C(1));
       }
     }
@@ -229,7 +228,7 @@ struct FactoryNameCollision {
         const auto &[a0] = std::get<typename cased::Mk>(this->v());
         return f(a0);
       } else {
-        const auto &[a0] = std::get<typename cased::MK>(this->v());
+        const auto &[a0] = std::get<typename cased::MK0>(this->v());
         return f0(a0);
       }
     }
@@ -242,15 +241,15 @@ struct FactoryNameCollision {
         const auto &[a0] = std::get<typename cased::Mk>(this->v());
         return f(a0);
       } else {
-        const auto &[a0] = std::get<typename cased::MK>(this->v());
+        const auto &[a0] = std::get<typename cased::MK0>(this->v());
         return f0(a0);
       }
     }
   };
 
-  static inline const uint64_t head = lst::cons(UINT64_C(7), lst::nil()).nil();
+  static inline const uint64_t head = lst::cons(UINT64_C(7), lst::nil()).nil0();
   static inline const uint64_t cased_sum =
-      (cased::mk(UINT64_C(1)).uncase() + cased::mk(UINT64_C(1)).uncase());
+      (cased::mk(UINT64_C(1)).uncase() + cased::mk0(UINT64_C(1)).uncase());
 };
 
 #endif // INCLUDED_FACTORY_NAME_COLLISION

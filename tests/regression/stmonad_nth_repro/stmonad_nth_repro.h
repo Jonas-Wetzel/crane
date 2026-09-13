@@ -42,13 +42,13 @@ static_assert(RefClass<nat_ref, uint64_t>);
 
 template <typename I> struct MyEvent {
   // DATA
-  uint64_t v;
+  uint64_t v_0;
 
   // ACCESSORS
-  MyEvent<I> clone() const { return {v}; }
+  MyEvent<I> clone() const { return {v_0}; }
 
   // CREATORS
-  static MyEvent<I> newref(uint64_t v) { return {v}; }
+  static MyEvent<I> newref(uint64_t v_0) { return {v_0}; }
 };
 
 uint64_t newOnly();

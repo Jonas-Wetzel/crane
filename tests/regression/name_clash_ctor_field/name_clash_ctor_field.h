@@ -42,7 +42,7 @@ struct NameClashCtorField {
   struct clash2 {
     // TYPES
     struct C2a {
-      uint64_t v;
+      uint64_t v_0;
     };
 
     struct C2b {
@@ -63,7 +63,7 @@ struct NameClashCtorField {
 
     explicit clash2(C2b _v) : v_(std::move(_v)) {}
 
-    static clash2 c2a(uint64_t v) { return clash2(C2a{v}); }
+    static clash2 c2a(uint64_t v_0) { return clash2(C2a{v_0}); }
 
     static clash2 c2b(uint64_t result) { return clash2(C2b{result}); }
 
@@ -75,8 +75,8 @@ struct NameClashCtorField {
 
     uint64_t get_clash2() const {
       if (std::holds_alternative<typename clash2::C2a>(this->v())) {
-        const auto &[v0] = std::get<typename clash2::C2a>(this->v());
-        return v0;
+        const auto &[v_0] = std::get<typename clash2::C2a>(this->v());
+        return v_0;
       } else {
         const auto &[result] = std::get<typename clash2::C2b>(this->v());
         return result;
@@ -88,8 +88,8 @@ struct NameClashCtorField {
                std::is_invocable_r_v<T1, F1 &, uint64_t &>
     T1 clash2_rec(F0 &&f, F1 &&f0) const {
       if (std::holds_alternative<typename clash2::C2a>(this->v())) {
-        const auto &[v0] = std::get<typename clash2::C2a>(this->v());
-        return f(v0);
+        const auto &[v_0] = std::get<typename clash2::C2a>(this->v());
+        return f(v_0);
       } else {
         const auto &[result0] = std::get<typename clash2::C2b>(this->v());
         return f0(result0);
@@ -101,8 +101,8 @@ struct NameClashCtorField {
                std::is_invocable_r_v<T1, F1 &, uint64_t &>
     T1 clash2_rect(F0 &&f, F1 &&f0) const {
       if (std::holds_alternative<typename clash2::C2a>(this->v())) {
-        const auto &[v0] = std::get<typename clash2::C2a>(this->v());
-        return f(v0);
+        const auto &[v_0] = std::get<typename clash2::C2a>(this->v());
+        return f(v_0);
       } else {
         const auto &[result0] = std::get<typename clash2::C2b>(this->v());
         return f0(result0);

@@ -22,7 +22,7 @@ template <S X> struct HashTrie {
 
     struct Node {
       typename X::t k;
-      V v;
+      V v_1;
       std::shared_ptr<Trie<V>> left;
       std::shared_ptr<Trie<V>> right;
     };
@@ -45,14 +45,14 @@ template <S X> struct HashTrie {
       if (std::holds_alternative<typename Trie<_U>::Empty>(_other.v())) {
         this->v_ = Empty{};
       } else {
-        const auto &[k, v, left, right] =
+        const auto &[k, v_1, left, right] =
             std::get<typename Trie<_U>::Node>(_other.v());
         this->v_ = Node{k,
                         [&]() -> V {
                           if constexpr (std::is_same_v<_U, std::any>) {
-                            return crane_any_cast<V>(v);
+                            return crane_any_cast<V>(v_1);
                           } else {
-                            return V(v);
+                            return V(v_1);
                           }
                         }(),
                         (left ? std::make_shared<Trie<V>>(*left) : nullptr),
@@ -62,8 +62,8 @@ template <S X> struct HashTrie {
 
     static Trie<V> empty() { return Trie<V>(Empty{}); }
 
-    static Trie<V> node(typename X::t k, V v, Trie<V> left, Trie<V> right) {
-      return Trie<V>(Node{std::move(k), std::move(v),
+    static Trie<V> node(typename X::t k, V v_1, Trie<V> left, Trie<V> right) {
+      return Trie<V>(Node{std::move(k), std::move(v_1),
                           std::make_shared<Trie<V>>(std::move(left)),
                           std::make_shared<Trie<V>>(std::move(right))});
     }
@@ -110,9 +110,9 @@ template <S X> struct HashTrie {
     if (std::holds_alternative<typename Trie<T1>::Empty>(t0.v())) {
       return f;
     } else {
-      const auto &[k0, v0, left0, right0] =
+      const auto &[k0, v_1, left0, right0] =
           std::get<typename Trie<T1>::Node>(t0.v());
-      return f0(k0, v0, *left0, Trie_rect<T1, T2>(f, f0, *left0), *right0,
+      return f0(k0, v_1, *left0, Trie_rect<T1, T2>(f, f0, *left0), *right0,
                 Trie_rect<T1, T2>(f, f0, *right0));
     }
   }
@@ -124,9 +124,9 @@ template <S X> struct HashTrie {
     if (std::holds_alternative<typename Trie<T1>::Empty>(t0.v())) {
       return f;
     } else {
-      const auto &[k0, v0, left0, right0] =
+      const auto &[k0, v_1, left0, right0] =
           std::get<typename Trie<T1>::Node>(t0.v());
-      return f0(k0, v0, *left0, Trie_rec<T1, T2>(f, f0, *left0), *right0,
+      return f0(k0, v_1, *left0, Trie_rec<T1, T2>(f, f0, *left0), *right0,
                 Trie_rec<T1, T2>(f, f0, *right0));
     }
   }

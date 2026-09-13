@@ -380,7 +380,7 @@ let register_into
     ~(ind_tvar_positions : int list) =
   (* The function is emitted inside its inductive's struct, so the naming layer
      has to keep its C++ name clear of the members that struct generates. *)
-  Common.reserve_methodified func_ref;
+  Common.reserve_methodified ~ind:epon_ref func_ref;
   Hashtbl.replace
     tbl
     func_ref

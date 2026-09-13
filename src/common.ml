@@ -366,6 +366,12 @@ let rec rename_id id avoid =
     constructor siblings therefore has to be done on this spelling. *)
 let ctor_cpp_id id = Id.of_string (String.capitalize_ascii (ascii_of_id id))
 
+(** The spelling a constructor occupies inside its inductive's struct.  Beside
+    the nested struct itself the constructor contributes a factory method, which
+    is that struct's name lowercased, so [Mk] and [MK] are two C++ type names
+    but one factory name -- a collision only this spelling sees. *)
+let ctor_scope_id id = Id.of_string (String.lowercase_ascii (ascii_of_id id))
+
 (** Find a fresh name for [id] by incrementing its subscript until [key] maps
     it outside [avoid].  Unlike {!Namegen.next_ident_away}, the set is consulted
     through [key], which lets a caller reserve names in a normalized spelling
@@ -549,13 +555,20 @@ let inductive_generated_member_set =
 (* The constants emitted as members of an inductive's struct rather than as
    free functions.  Methodification is decided from the whole structure, before
    any name is printed, so the naming layer is told which references it applies
-   to rather than asking. *)
-let methodified_refs = ref Refset'.empty
+   to rather than asking.  Each is mapped to the inductive whose struct it
+   lands in, so the naming layer can also keep it clear of that struct's
+   factory methods. *)
+let methodified_refs = ref Refmap'.empty
 
-let () = register_cleanup (fun () -> methodified_refs := Refset'.empty)
+let () = register_cleanup (fun () -> methodified_refs := Refmap'.empty)
 
-let reserve_methodified r = methodified_refs := Refset'.add r !methodified_refs
-let is_methodified_ref r = Refset'.mem r !methodified_refs
+let reserve_methodified ~ind r =
+  methodified_refs := Refmap'.add r ind !methodified_refs
+
+let is_methodified_ref r = Refmap'.mem r !methodified_refs
+
+(** The inductive whose struct [r] is emitted into, if [r] is methodified. *)
+let methodified_owner r = Refmap'.find_opt r !methodified_refs
 
 (** Create a fresh de Bruijn environment with current global ids. *)
 let empty_env () = ([], get_global_ids ())
@@ -976,22 +989,22 @@ let ref_renaming_fun (k, r) =
          accumulate stale entries. *)
       ( match r with
       | GlobRef.ConstructRef (ind, _) when not is_bound ->
-        (* Constructor siblings are reserved under the PascalCase name they are
-           emitted with, so a pair like [Foo]/[foo] is recognized as one C++
-           name. In C++ a nested struct also cannot share its name with the
-           enclosing struct, so the parent inductive's name is reserved too --
-           in the same spelling, since an eponymous Dnspace merge may capitalize
-           the enclosing struct (e.g. module Ascii + type ascii -> struct
-           Ascii). *)
+        (* Constructor siblings are reserved under {!ctor_scope_id}, the
+           spelling they share with their factory method, so a pair like
+           [Foo]/[foo] is recognized as one C++ name. In C++ a nested struct
+           also cannot share its name with the enclosing struct, so the parent
+           inductive's name is reserved too -- in the same spelling, since an
+           eponymous Dnspace merge may capitalize the enclosing struct
+           (e.g. module Ascii + type ascii -> struct Ascii). *)
         let parent_idg = safe_basename_of_global (GlobRef.IndRef ind) in
         let parent_s, _ = modular_rename_ex k parent_idg in
         let siblings =
           Id.Set.add
-            (ctor_cpp_id (Id.of_string parent_s))
+            (ctor_scope_id (Id.of_string parent_s))
             (get_ctor_siblings ind)
         in
-        let id = next_ident_away_keyed ctor_cpp_id (Id.of_string s) siblings in
-        add_ctor_sibling ind (ctor_cpp_id id);
+        let id = next_ident_away_keyed ctor_scope_id (Id.of_string s) siblings in
+        add_ctor_sibling ind (ctor_scope_id id);
         Id.to_string id
       | _ when not is_bound ->
         let siblings = get_mp_siblings mp in
@@ -1015,18 +1028,26 @@ let ref_renaming_fun (k, r) =
           | _ -> None
         in
         let key = if is_ind then ctor_cpp_id else fun id -> id in
-        (* A methodified constant is declared inside the struct of its
-           inductive, beside the members that struct generates for itself, so
-           it may not be spelled like one of them. *)
+        (* An inductive's struct, and every constant methodified into it, sits
+           beside the members that struct generates for itself, so neither may
+           be spelled like one of them. *)
+        let in_generated_struct = is_ind || is_methodified_ref r in
         let is_generated_member id =
-          is_methodified_ref r
-          && Id.Set.mem id inductive_generated_member_set
+          in_generated_struct && Id.Set.mem id inductive_generated_member_set
+        in
+        (* A methodified constant also sits beside a factory method per
+           constructor, reserved under {!ctor_scope_id}. *)
+        let factory_names =
+          match methodified_owner r with
+          | Some (GlobRef.IndRef ind) -> get_ctor_siblings ind
+          | _ -> Id.Set.empty
         in
         let rec fresh id =
           if
             Id.Set.mem (key id) siblings
             || Option.equal String.equal (Some (Id.to_string id)) own_struct_name
             || is_generated_member id
+            || Id.Set.mem (ctor_scope_id id) factory_names
           then
             fresh (increment_subscript id)
           else

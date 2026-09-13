@@ -19,7 +19,7 @@ struct PolyInductive {
     pbox<A> clone() const { return {a0}; }
 
     // CREATORS
-    static pbox<A> PBox_(A a0) { return {std::move(a0)}; }
+    static pbox<A> pbox0(A a0) { return {std::move(a0)}; }
 
     A punbox() const {
       const auto &[a0] = *this;
@@ -50,7 +50,7 @@ struct PolyInductive {
     ppair<A, B> clone() const { return {a0, a1}; }
 
     // CREATORS
-    static ppair<A, B> PPair_(A a0, B a1) {
+    static ppair<A, B> ppair0(A a0, B a1) {
       return {std::move(a0), std::move(a1)};
     }
 
@@ -426,11 +426,11 @@ struct PolyInductive {
   };
 
   static inline const uint64_t test_pbox =
-      pbox<uint64_t>::PBox_(UINT64_C(42)).punbox();
+      pbox<uint64_t>::pbox0(UINT64_C(42)).punbox();
   static inline const uint64_t test_ppair_fst =
-      ppair<uint64_t, bool>::PPair_(UINT64_C(7), true).pfst();
+      ppair<uint64_t, bool>::ppair0(UINT64_C(7), true).pfst();
   static inline const bool test_ppair_snd =
-      ppair<uint64_t, bool>::PPair_(UINT64_C(7), true).psnd();
+      ppair<uint64_t, bool>::ppair0(UINT64_C(7), true).psnd();
   static inline const uint64_t test_pjust =
       pmaybe<uint64_t>::pjust(UINT64_C(99)).pmaybe_default(UINT64_C(0));
   static inline const uint64_t test_pnothing =

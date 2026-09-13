@@ -143,21 +143,21 @@ let field_name_str_of_idx consarg_names k =
 let compute_field_name ~owner ctor_struct_name field_consarg_names
     bind_consarg_names _n_fields j =
   let base_str = field_name_str_of_idx field_consarg_names j in
-  (* A field shares its scope with the earlier fields and with the factory
-     method, which C++ will not let it have the same name as.  Both are
-     resolved the same way, by falling back to the indexed form. *)
-  let needs_index =
-    let rec dups_earlier k =
-      if k >= j then false
-      else if String.equal (field_name_str_of_idx field_consarg_names k) base_str
-      then true
-      else dups_earlier (k + 1)
-    in
-    dups_earlier 0
-    || String.equal base_str
-         (factory_name_of_ctor ~type_name:(owning_type_name owner)
-            ctor_struct_name)
+  (* A field shares its scope with the earlier fields, with the factory method,
+     with the members the struct generates for itself, and with the type names
+     visible there -- its own struct and the inductive that struct belongs to,
+     either of which a same-named member would hide.  All are resolved the same
+     way, by falling back to the indexed form. *)
+  let type_name = owning_type_name owner in
+  let reserved =
+    Id.Set.of_list
+      (List.map Id.of_string
+         ( ctor_struct_name :: type_name
+           :: factory_name_of_ctor ~type_name ctor_struct_name
+           :: Common.inductive_generated_members
+         @ List.init j (field_name_str_of_idx field_consarg_names) ))
   in
+  let needs_index = Id.Set.mem (Id.of_string base_str) reserved in
   let field_str =
     if needs_index then base_str ^ "_" ^ string_of_int j else base_str
   in
