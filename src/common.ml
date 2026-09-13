@@ -546,11 +546,10 @@ let () = register_cleanup (fun () -> Hashtbl.clear sibling_collision_renames)
     alias, its accessors and the deep copy.  Anything else that ends up inside
     that struct -- a constructor's factory ({!Translation.factory_name_of_ctor})
     or a methodified constant ({!reserve_methodified}) -- has to keep clear of
-    them. *)
-let inductive_generated_members = [ "v"; "v_"; "v_mut"; "clone"; "variant_t" ]
+    them, so this set is the one place the names are written down. *)
+let inductive_generated_members =
+  Id.Set.of_list (List.map Id.of_string ["v"; "v_"; "v_mut"; "clone"; "variant_t"])
 
-let inductive_generated_member_set =
-  Id.Set.of_list (List.map Id.of_string inductive_generated_members)
 
 (* The constants emitted as members of an inductive's struct rather than as
    free functions.  Methodification is decided from the whole structure, before
@@ -1055,8 +1054,8 @@ let ref_renaming_fun (k, r) =
            beside the members that struct generates for itself, so neither may
            be spelled like one of them. *)
         let in_generated_struct = is_ind || is_methodified_ref r in
-        let is_generated_member id =
-          in_generated_struct && Id.Set.mem id inductive_generated_member_set
+        let hides_generated_member id =
+          in_generated_struct && Id.Set.mem id inductive_generated_members
         in
         (* A methodified constant also sits beside a factory method per
            constructor, reserved under {!ctor_scope_id}. *)
@@ -1069,7 +1068,7 @@ let ref_renaming_fun (k, r) =
           if
             Id.Set.mem (key id) siblings
             || Option.equal String.equal (Some (Id.to_string id)) own_struct_name
-            || is_generated_member id
+            || hides_generated_member id
             || Id.Set.mem (ctor_scope_id id) factory_names
           then
             fresh (increment_subscript id)

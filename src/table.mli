@@ -606,15 +606,15 @@ val output_directory : unit -> string
     directory on error. *)
 val output_directory_for_module : unit -> string
 
-(** [validate_output_target target] rejects a user-supplied extraction target
-    filename that could escape the output directory. Absolute paths and [..]
+(** [claim_output_target target] vets a user-supplied extraction target
+    filename and takes it for this extraction. Absolute paths and [..]
     components raise a Rocq user error; ordinary relative subpaths are accepted.
     Guards against path traversal / arbitrary file write (CWE-22/CWE-73).
 
-    An accepted target is claimed, so extracting to it a second time in the same
-    session -- which would overwrite the first extraction's files -- is rejected
-    as well. *)
-val validate_output_target : string -> unit
+    Taking the target is what makes a second extraction to it -- which would
+    overwrite this one's files -- a user error in turn, so the call belongs at
+    the boundary and happens exactly once per extraction. *)
+val claim_output_target : string -> unit
 
 (** [claim_extracted_unit mp target] records that the Rocq library [mp] was
     extracted into the C++ unit [target], unless some unit already claims it.

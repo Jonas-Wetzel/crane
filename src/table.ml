@@ -1618,7 +1618,7 @@ let output_directory_for_module () =
    one of them would overwrite the first's files with no trace of it. *)
 let claimed_output_targets : (string, unit) Hashtbl.t = Hashtbl.create 7
 
-let validate_output_target target =
+let claim_output_target target =
   if Hashtbl.mem claimed_output_targets target then
     CErrors.user_err
       Pp.(

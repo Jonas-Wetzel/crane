@@ -232,7 +232,7 @@ val emitted_module_name : ModPath.t -> string
 (** The members every inductive's C++ struct declares for itself (the variant
     alias, its accessors, the deep copy).  Whatever else is emitted inside that
     struct has to keep clear of these names. *)
-val inductive_generated_members : string list
+val inductive_generated_members : Id.Set.t
 
 (** Record that [r] is emitted as a member of the struct of inductive [ind], so
     that its C++ name avoids {!inductive_generated_members} and [ind]'s factory

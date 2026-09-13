@@ -1556,11 +1556,12 @@ let full_extr opaque_access f refs =
 (** Main entry point for full library extraction. Extracts the given references
     and module paths to a single output file.
 
-    [validate] (default [true]) rejects an output filename that would escape the
-    output directory; trusted callers that supply an already-vetted or internal
-    path (e.g. a temporary file) pass [~validate:false]. *)
+    [validate] (default [true]) claims the output filename, rejecting one that
+    would escape the output directory or that an earlier extraction already
+    took; trusted callers that supply an already-vetted or internal path
+    (e.g. a temporary file) pass [~validate:false]. *)
 let full_extraction ?(validate = true) ~opaque_access f lr =
-  if validate then Option.iter Table.validate_output_target f;
+  if validate then Option.iter Table.claim_output_target f;
   full_extr opaque_access f (locate_ref lr)
 
 (** Full extraction variant used by managed benchmarks.  [after_print] runs
@@ -1568,7 +1569,7 @@ let full_extraction ?(validate = true) ~opaque_access f lr =
     available. See {!full_extraction} for [validate]. *)
 let full_extraction_with_result ?(validate = true) ~opaque_access f lr after_print
     =
-  if validate then Option.iter Table.validate_output_target f;
+  if validate then Option.iter Table.claim_output_target f;
   full_extr_with_result opaque_access f (locate_ref lr) after_print
 
 (** {2 Separate extraction is similar to recursive extraction, with the output
@@ -1944,9 +1945,9 @@ let emit_test_status status test_id_str source_file =
 (** Full extract-compile-test pipeline: extracts to C++, compiles with clang,
     optionally links and runs the [.t.cpp] test driver, and reports results. *)
 let extract_and_compile ~opaque_access file l =
-  (* Reject an output target that would escape the output directory before it is
-     turned into a path. *)
-  Option.iter Table.validate_output_target file;
+  (* Take the output target, rejecting one that would escape the output
+     directory, before it is turned into a path. *)
+  Option.iter Table.claim_output_target file;
   let filename =
     match mono_filename file with
     | Some fn, _, _ ->
