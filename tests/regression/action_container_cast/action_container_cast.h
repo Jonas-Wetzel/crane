@@ -6,7 +6,6 @@
 #include <any>
 #include <atomic>
 #include <deque>
-#include <functional>
 #include <memory>
 #include <utility>
 #include <variant>
@@ -221,17 +220,15 @@ const std::deque<grammar_entry> entries =
           existt(Prod<Nonterminal, std::deque<Symbol>>::pair(
                      Nonterminal::NARR, std::deque<Symbol>{}),
                  Prod<std::any, std::any>::pair(
-                     std::function<std::any(std::any)>(
-                         [](const std::any &_any__x) {
-                           Bool0 _x = std::any_cast<Bool0>(_any__x);
-                           return Bool0::TRUE_;
-                         }),
-                     std::function<std::any(std::any)>(
-                         [](const std::any &_any__x) {
-                           std::deque<std::any> _x =
-                               std::any_cast<std::deque<std::any>>(_any__x);
-                           return std::deque<std::any>{};
-                         }))),
+                     crane_erase_fn([](const std::any &_any__x) {
+                       Bool0 _x = std::any_cast<Bool0>(_any__x);
+                       return Bool0::TRUE_;
+                     }),
+                     crane_erase_fn([](const std::any &_any__x) {
+                       std::deque<std::any> _x =
+                           std::any_cast<std::deque<std::any>>(_any__x);
+                       return std::deque<std::any>{};
+                     }))),
       [](auto _a0, auto _a1) {
         _a1.push_front(_a0);
         return _a1;
@@ -243,20 +240,17 @@ const std::deque<grammar_entry> entries =
                          return _a1;
                        }(Symbol::nt(Nonterminal::NARR), std::deque<Symbol>{})),
                    Prod<std::any, std::any>::pair(
-                       std::function<std::any(std::any)>(
-                           [](const std::any &_any__x) {
-                             Bool0 _x = std::any_cast<Bool0>(_any__x);
-                             return Bool0::TRUE_;
-                           }),
-                       std::function<std::any(std::any)>(
-                           [](const std::any &_any_ss) {
-                             Prod<symbol_semty, Unit> ss =
-                                 std::any_cast<Prod<symbol_semty, Unit>>(
-                                     _any_ss);
-                             const auto &[a0, a1] = ss;
-                             return R::rarr(crane_container_cast<std::deque<R>>(
-                                 std::any_cast<std::deque<std::any>>(a0)));
-                           }))),
+                       crane_erase_fn([](const std::any &_any__x) {
+                         Bool0 _x = std::any_cast<Bool0>(_any__x);
+                         return Bool0::TRUE_;
+                       }),
+                       crane_erase_fn([](const std::any &_any_ss) {
+                         Prod<symbol_semty, Unit> ss =
+                             std::any_cast<Prod<symbol_semty, Unit>>(_any_ss);
+                         const auto &[a0, a1] = ss;
+                         return R::rarr(crane_container_cast<std::deque<R>>(
+                             std::any_cast<std::deque<std::any>>(a0)));
+                       }))),
         std::deque<SigT<Prod<Nonterminal, std::deque<Symbol>>,
                         Prod<std::any, std::any>>>{}));
 

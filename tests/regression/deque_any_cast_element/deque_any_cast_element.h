@@ -1,6 +1,7 @@
 #ifndef INCLUDED_DEQUE_ANY_CAST_ELEMENT
 #define INCLUDED_DEQUE_ANY_CAST_ELEMENT
 
+#include "crane_fn.h"
 #include <any>
 #include <cstdint>
 #include <deque>
@@ -28,8 +29,7 @@ using output_ty = std::any;
 using action_entry = SigT<Tag, std::function<output_ty(input_ty)>>;
 const action_entry my_action =
     SigT<Tag, std::function<std::any(std::any)>>::existt(
-        Tag::TAGA,
-        std::function<std::any(std::any)>([](const std::any &tup) -> std::any {
+        Tag::TAGA, crane_erase_fn([](const std::any &tup) -> std::any {
           const auto &[x, y0] =
               std::any_cast<std::pair<std::any, std::any>>(tup);
           const auto &[xs, y] =

@@ -140,6 +140,16 @@ let rec castable_to = function
 let note_alias id ty =
   if is_any_shaped ty then any_type_aliases := Id.Set.add id !any_type_aliases
 
+(** [applies_erased_callee e] -- [e] applies a callable that was recovered
+    from a box with an [any_cast], so its result is a box too however concrete
+    the position it lands in is.  Unlike a call to a named function, whose
+    declared result type is already right, this one cannot be: the erased
+    convention hands back [std::any]. *)
+let rec applies_erased_callee = function
+  | CPPfun_call (_, CPPany_cast (Tfun _, _), _) -> true
+  | CPPfun_call (_, f, _) -> applies_erased_callee f
+  | _ -> false
+
 (** [boxed_var boxed e] -- [e] reads a binder that is declared [std::any]. *)
 let rec boxed_var boxed = function
   | CPPvar id -> Id.Set.mem id boxed
@@ -192,7 +202,7 @@ and resolve_stmt ?(ret = None) boxed s =
      tests/regression/loopify_variant_self_assign and friends). *)
   | Sreturn (Some e)
     when (match ret with Some t -> castable_to t | None -> false)
-         && boxed_var boxed e ->
+         && (boxed_var boxed e || applies_erased_callee e) ->
     let t = Ml_type_util.resolve_tvars_to_any (Option.get ret) in
     Sreturn (Some (resolve_expr boxed (CPPany_cast (t, e))))
   | Scustom_case (rty, scrut, targs, branches, custom) ->

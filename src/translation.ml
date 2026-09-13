@@ -2120,7 +2120,15 @@ let rec infer_ml_body_type (a : ml_ast) : ml_type option =
   | MLapp (MLglob (r, tys), args) ->
     ( match find_type_opt r with
     | Some ty ->
-      (* Instantiate type schema variables with actual type arguments *)
+      (* Instantiate type schema variables with actual type arguments -- the
+         ones the call site carries, or, where it carries none, the ones its
+         arguments imply. *)
+      let tys =
+        if tys <> [] then tys
+        else
+          tvar_instantiation ty
+            (List.filter (function MLdummy _ -> false | _ -> true) args)
+      in
       let ty = match tys with
         | [] -> ty
         | _ -> Mlutil.type_subst_list tys ty
@@ -2137,6 +2145,89 @@ let rec infer_ml_body_type (a : ml_ast) : ml_type option =
   | MLglob (r, _) -> find_type_opt r
   | MLmagic (_, e) -> infer_ml_body_type e
   | _ -> None
+
+(** [codomain_via_receiver callee_ty args] is the receiver's type paired with
+    the template position a call's result occupies in it, where the callee's declared codomain is one of the type variables its
+    first argument's type instantiates -- a projection out of a dependent
+    pair, say.
+
+    The caller reads the result's C++ type off that position of the
+    {e converted} receiver.  Converting the codomain's ML instantiation on its
+    own is not the same thing: a type argument that the receiver's own
+    conversion erases still spells concretely in isolation, and the field it
+    describes is then physically a [std::any] while its ML type denies it. *)
+and codomain_via_receiver callee_ty args =
+  let var_index = function
+    | Miniml.Tvar (_, j) -> Some j
+    | _ -> None
+  in
+  match (var_index (resolve_tmeta (ml_codomain callee_ty)), args) with
+  | Some j, arg :: _ -> (
+    match (ml_value_domains callee_ty, infer_ml_body_type arg) with
+    | dom0 :: _, Some actual -> (
+      match (resolve_tmeta dom0, resolve_tmeta actual) with
+      | Miniml.Tglob (g1, formals, _), (Miniml.Tglob (g2, _, _) as actual)
+        when Common.globref_equal g1 g2 -> (
+        let pos =
+          let rec find i = function
+            | [] -> None
+            | f :: rest ->
+              if var_index (resolve_tmeta f) = Some j then Some i
+              else find (i + 1) rest
+          in
+          find 0 formals
+        in
+        match pos with Some i -> Some (actual, i) | None -> None )
+      | _ -> None )
+    | _ -> None )
+  | _ -> None
+
+(** [tvar_instantiation callee_ty args] is the callee's type-variable
+    instantiation, read off the arguments' own ML types.
+
+    A call site does not always carry its type arguments: when they were
+    erased, the [MLglob]'s list is empty and the callee's schema stays
+    uninstantiated, so a codomain like [projT2]'s reads as a bare [Tvar] and
+    nothing downstream can tell whether it erases.  The arguments still pin
+    the variables down -- matching the declared domain against the type each
+    argument actually has recovers them.
+
+    The result is indexed the way {!Mlutil.type_subst_list} expects: position
+    [i] instantiates [Tvar (_, i + 1)].  A variable no argument mentions keeps
+    itself, so substituting leaves it alone. *)
+and tvar_instantiation callee_ty args =
+  let found = Hashtbl.create 7 in
+  let rec unify formal actual =
+    match (resolve_tmeta formal, resolve_tmeta actual) with
+    | Miniml.Tvar (_, i), a -> if not (Hashtbl.mem found i) then Hashtbl.replace found i a
+    | Miniml.Tglob (g1, a1, _), Miniml.Tglob (g2, a2, _)
+      when GlobRef.CanOrd.equal g1 g2 && List.length a1 = List.length a2 ->
+      List.iter2 unify a1 a2
+    | Miniml.Tarr (d1, c1), Miniml.Tarr (d2, c2) ->
+      unify d1 d2 ;
+      unify c1 c2
+    | _ -> ()
+  in
+  (* [args] holds the value arguments only, so a [Tdummy] formal -- an erased
+     type or proof parameter -- consumes none of them. *)
+  let rec walk ty args =
+    match (resolve_tmeta ty, args) with
+    | Miniml.Tarr (Miniml.Tdummy _, cod), _ -> walk cod args
+    | Miniml.Tarr (dom, cod), a :: rest ->
+      ( match infer_ml_body_type a with
+      | Some t -> unify dom t
+      | None -> () ) ;
+      walk cod rest
+    | _ -> ()
+  in
+  walk callee_ty args ;
+  if Hashtbl.length found = 0 then []
+  else
+    let n = Hashtbl.fold (fun i _ m -> max i m) found 0 in
+    List.init n (fun k ->
+        match Hashtbl.find_opt found (k + 1) with
+        | Some t -> t
+        | None -> Miniml.Tvar (Miniml.Schematic, k + 1) )
 
 (** Whether an ML type's result is a skipped type -- a [ReSum] instance, say,
     whose class extraction records as a [ConstRef] mapped to the empty string,
@@ -4410,7 +4501,8 @@ and yields_boxed_component = function
     named the erased shape [pair<any, any>] and whose components are therefore
     boxes in their own right. *)
 and reads_recovered_pair = function
-  | CPPany_cast (Tglob (g, args, _), _) ->
+  | CPPany_cast (Tglob (g, args, _), _)
+  | CPPany_cast_tolerant (Tglob (g, args, _), _) ->
     is_prod_global g && args <> [] && List.for_all prints_as_any args
   | _ -> false
 
@@ -6693,14 +6785,18 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
                   | Some _ -> ret_ty_opt
                   | None -> if erased_ret_ty <> Tany then Some erased_ret_ty else None
                 in
-                let erased_param_tys = List.map (fun _ -> Tany) renamed_params in
                 let new_lambda = CPPlambda
                   { cl_params = of_reversed renamed_params;
                     cl_ret = new_ret_ty;
                     cl_body = new_body;
                     cl_by_value = cap } in
-                let func_ty = Tfun (safe_firstn n_params erased_param_tys, erased_ret_ty) in
-                Cpp_erasure.converting_ctor func_ty [new_lambda]
+                (* The field itself is fully erased, so the only signature a
+                   consumer can cast back to is the canonical
+                   [std::function<std::any(std::any...)>] -- the same one the
+                   non-lambda case below stores.  The lambda keeps its own
+                   concrete result type; [crane_erase_fn] deduces it and boxes
+                   what it returns. *)
+                wrap_crane_erase_fn new_lambda
               | _ ->
                 (* When a custom list literal (e.g. deque<Val>) is stored in a
                    std::any field, regenerate it with [deep_erase] so
@@ -8053,6 +8149,10 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
           (value_args, [])
       | None -> (List.filter is_value_arg args, [])
     in
+    (* The primary arguments while they are still ML: [args] is rebound to
+       generated C++ expressions further down, but the callee's instantiation
+       can only be read off the ML types. *)
+    let primary_ml_args = args in
     (* Partition args into type class instances and regular args *)
     let typeclass_ml_args, regular_ml_args =
       List.partition is_typeclass_instance_arg args
@@ -8999,6 +9099,21 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
        args come from proof-certificate functions ([Function] vernacular
        [_correct] terms) that are never called at runtime.  We emit an abort
        placeholder for those. *)
+    (* The callee's instantiation at this call: the explicit type arguments
+       where the site carries them, and otherwise the one its arguments
+       imply. *)
+    let inst_tys =
+      if tys <> [] then tys
+      else
+        match find_type_opt id with
+        | Some ml_ty -> tvar_instantiation ml_ty primary_ml_args
+        | None -> []
+    in
+    (* The callee's codomain as this call instantiates it. *)
+    let instantiated_codomain ml_ty =
+      let cod = ml_codomain ml_ty in
+      if inst_tys = [] then cod else Mlutil.type_subst_list inst_tys cod
+    in
     let wrap_excess base =
       if excess_args = [] then
         base
@@ -9030,10 +9145,10 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
                  only exist when the return type instantiates to a function.
                  Proof-level excess args are already removed by the
                  [MLdummy] filter above. *)
-              if tys = [] then
+              if inst_tys = [] then
                 true
               else
-                let cod_inst = Mlutil.type_subst_list tys cod in
+                let cod_inst = Mlutil.type_subst_list inst_tys cod in
                 ( match resolve_tmeta cod_inst with
                 | Miniml.Tarr _ -> true
                 | Miniml.Tglob _ -> true
@@ -9051,7 +9166,26 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
         let cod_is_erased =
           match find_type_opt id with
           | Some ml_ty ->
-            ml_erases_to_box env (ml_codomain ml_ty)
+            ml_erases_to_box env (instantiated_codomain ml_ty)
+            || ( match codomain_via_receiver ml_ty primary_ml_args with
+               | Some (recv, i) -> (
+                 (* Its C++ spelling names the same arguments whichever way the
+                    struct is referred to. *)
+                 let rec targs = function
+                   | Tconst t | Tref t | Tshared_ptr t | Tnamespace (_, t) ->
+                     targs t
+                   | Tglob (_, a, _) | Tid (_, a) | Tid_external (_, a)
+                   | Tapply (_, a) -> Some a
+                   | _ -> None
+                 in
+                 match (resolve_tmeta recv, targs (cpp_of_ml env recv)) with
+                 | Miniml.Tglob (_, actuals, _), Some cpp_args
+                   when List.length actuals = List.length cpp_args -> (
+                   match List.nth_opt cpp_args i with
+                   | Some c -> is_boxed_source c
+                   | None -> false )
+                 | _ -> false )
+               | None -> false )
             || result_is_index_only_tvar ml_ty
           | None -> false
         in
@@ -9059,9 +9193,7 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
            the excess args are applied to. *)
         let cod_inst =
           match find_type_opt id with
-          | Some ml_ty ->
-            let cod = ml_codomain ml_ty in
-            Some (if tys = [] then cod else Mlutil.type_subst_list tys cod)
+          | Some ml_ty -> Some (instantiated_codomain ml_ty)
           | None -> None
         in
         (* A codomain that is a type variable takes its C++ shape from the
@@ -9099,14 +9231,25 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
           let excess = List.map (gen_expr ~slot env) excess_args in
           if cod_is_erased then
             let applied = apply_erased_callee base excess in
+
             (* Args applied to a box come back as a box; the codomain at this
                call's instantiation is what says what that box holds. *)
-            unbox_into
-              (Option.map
-                 (fun c ->
-                   cpp_of_ml env (ml_drop_arrows (List.length excess) c) )
-                 cod_inst )
-              applied
+            let recovered_at =
+              let from_cod =
+                Option.map
+                  (fun c ->
+                    cpp_of_ml env (ml_drop_arrows (List.length excess) c) )
+                  cod_inst
+              in
+              (* The instantiated codomain does not always name a type to
+                 recover at -- it may itself be erased, the very reason the
+                 application went through the boxed convention.  The position
+                 the call sits in then says what the value is. *)
+              match from_cod with
+              | Some c when states_unboxed_target c -> from_cod
+              | _ -> expected_ty
+            in
+            unbox_into recovered_at applied
           else chain_excess base cod_inst excess
         else
           CPPabort ("untranslatable curried proof term", abort_ty expected_ty) )
@@ -9338,7 +9481,7 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
               | Some ty -> rel_is_erased ty
               | None -> true )
             | MLmagic (_, _) -> true
-            | MLapp (MLglob (r, _), args) ->
+            | MLapp (MLglob (r, _), args) as node ->
               (* If the callee is itself a pair accessor (.first/.second) and
                  its product arg was coerced, result is also std::any *)
               let is_pair_accessor =
@@ -9352,7 +9495,14 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
                   List.filter (fun x -> match x with MLdummy _ -> false | _ -> true) args
                 in
                 List.exists has_magic inner_args
-              else glob_declared_cod_erases r
+              else
+                glob_declared_cod_erases r
+                (* A declaration that leaves its result a type variable says
+                   nothing on its own; the type this call instantiates it to
+                   does. *)
+                || ( match infer_ml_body_type node with
+                   | Some t -> is_boxed_source (cpp_of_ml env t)
+                   | None -> false )
             | MLglob (r, _) -> glob_declared_cod_erases r
             | MLapp (MLmagic (_, _), _) -> true
             | MLrel i -> (
@@ -9406,8 +9556,17 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
             mk_call cglob'
               [Cpp_erasure.unbox_tolerant (Tglob (g, glob_tys, [])) single_arg]
           | Some g, _ ->
+            (* Tolerantly: the ML type says the argument is a box, but a
+               producer that could name the pair's shape may have emitted the
+               [pair<any, any>] itself rather than a box around it.
+               [crane_any_cast] accepts both -- it opens a box and passes a
+               pair already in hand through -- where a plain [any_cast] would
+               throw on the latter. *)
+            Table.mark_needs_erase_fn () ;
             mk_call cglob'
-              [Cpp_erasure.unbox (Tglob (g, [Tany; Tany], [])) (single_arg)]
+              [ Cpp_erasure.unbox_tolerant
+                  (Tglob (g, [Tany; Tany], []))
+                  single_arg ]
           | None, _ -> primary_result )
         else
           primary_result

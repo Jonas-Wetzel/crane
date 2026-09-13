@@ -19,25 +19,21 @@ using sem_ty = std::any;
 using action = Specif::SigT<Tag, std::function<sem_ty(sem_ty)>>;
 const action base_action =
     Specif::template SigT<Tag, std::function<std::any(std::any)>>::existt(
-        Tag::TAGLIST, std::function<std::any(std::any)>(
-                          [](const std::any &_any__x) -> std::any {
-                            std::deque<std::any> _x =
-                                std::any_cast<std::deque<std::any>>(_any__x);
-                            return std::deque<std::any>{};
-                          }));
+        Tag::TAGLIST, crane_erase_fn([](const std::any &_any__x) -> std::any {
+          std::deque<std::any> _x =
+              std::any_cast<std::deque<std::any>>(_any__x);
+          return std::deque<std::any>{};
+        }));
 const action cons_action =
     Specif::template SigT<Tag, std::function<std::any(std::any)>>::existt(
-        Tag::TAGLIST,
-        std::function<std::any(std::any)>(
-            [](const std::any &_any_xs) -> std::any {
-              std::deque<std::any> xs =
-                  std::any_cast<std::deque<std::any>>(_any_xs);
-              return [](auto _a0, auto _a1) {
-                _a1.push_front(_a0);
-                return _a1;
-              }(std::make_pair(std::any(UINT64_C(42)), std::any(UINT64_C(99))),
-                     xs);
-            }));
+        Tag::TAGLIST, crane_erase_fn([](const std::any &_any_xs) -> std::any {
+          std::deque<std::any> xs =
+              std::any_cast<std::deque<std::any>>(_any_xs);
+          return [](auto _a0, auto _a1) {
+            _a1.push_front(_a0);
+            return _a1;
+          }(std::make_pair(std::any(UINT64_C(42)), std::any(UINT64_C(99))), xs);
+        }));
 Specif::SigT<Tag, sem_ty>
 apply_action(const Specif::SigT<Tag, std::function<std::any(std::any)>> &a,
              Specif::SigT<Tag, sem_ty> v);

@@ -1,6 +1,7 @@
 #ifndef INCLUDED_EXISTENTIAL_FN_PROJECTION
 #define INCLUDED_EXISTENTIAL_FN_PROJECTION
 
+#include "crane_fn.h"
 #include <any>
 #include <functional>
 #include <utility>
@@ -28,18 +29,19 @@ template <typename A, typename P> struct SigT {
 struct ExistentialFnProjection {
   static inline const SigT<std::any, std::any> measurer =
       SigT<std::any, std::any>::existt(
-          std::any(), std::function<uint64_t(std::any)>(
-                          [](const std::any &_any_x) -> uint64_t {
-                            uint64_t x = std::any_cast<uint64_t>(_any_x);
-                            return (std::any_cast<uint64_t>(x) + UINT64_C(1));
-                          }));
-  static inline const uint64_t measured = measurer.projT2()(UINT64_C(4));
+          std::any(), crane_erase_fn([](const std::any &_any_x) -> uint64_t {
+            uint64_t x = std::any_cast<uint64_t>(_any_x);
+            return (std::any_cast<uint64_t>(x) + UINT64_C(1));
+          }));
+  static inline const uint64_t measured =
+      std::any_cast<uint64_t>(std::any_cast<std::function<std::any(std::any)>>(
+          measurer.projT2())(std::any(UINT64_C(4))));
   static inline const SigT<std::any, std::pair<std::any, std::any>> tagged =
       SigT<std::any, std::pair<std::any, std::any>>::existt(
           std::any(),
           std::make_pair(std::any(UINT64_C(7)), std::any(UINT64_C(8))));
-
-  static inline const uint64_t tag = tagged.projT2().second;
+  static inline const uint64_t tag = std::any_cast<uint64_t>(
+      crane_any_cast<std::pair<std::any, std::any>>(tagged.projT2()).second);
 };
 
 #endif // INCLUDED_EXISTENTIAL_FN_PROJECTION

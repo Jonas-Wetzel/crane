@@ -115,15 +115,3 @@
 
 
 
-
-
-(subdir existential_fn_projection
- (rule
-  (targets existential_fn_projection.t.exe)
-  (deps ExistentialFnProjection.vo existential_fn_projection.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} existential_fn_projection.t.exe existential_fn_projection.cpp existential_fn_projection.t.cpp)))
- (rule
-  (alias runtest)
-  (deps existential_fn_projection.t.exe)
-  (action (run ./existential_fn_projection.t.exe))))

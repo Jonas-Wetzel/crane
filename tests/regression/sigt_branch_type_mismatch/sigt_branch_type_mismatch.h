@@ -1,6 +1,7 @@
 #ifndef INCLUDED_SIGT_BRANCH_TYPE_MISMATCH
 #define INCLUDED_SIGT_BRANCH_TYPE_MISMATCH
 
+#include "crane_fn.h"
 #include <any>
 #include <functional>
 #include <utility>
@@ -26,7 +27,7 @@ template <typename A, typename P> struct SigT {
 /// result unboxed.
 struct SigtBranchTypeMismatch {
   static inline const SigT<bool, std::any> pack = SigT<bool, std::any>::existt(
-      false, std::function<std::any(std::any)>([](const std::any &_any_n) {
+      false, crane_erase_fn([](const std::any &_any_n) {
         uint64_t n = std::any_cast<uint64_t>(_any_n);
         return (n + UINT64_C(7));
       }));

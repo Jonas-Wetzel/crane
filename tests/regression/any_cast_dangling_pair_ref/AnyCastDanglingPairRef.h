@@ -1,6 +1,7 @@
 #ifndef INCLUDED_ANYCASTDANGLINGPAIRREF
 #define INCLUDED_ANYCASTDANGLINGPAIRREF
 
+#include "crane_fn.h"
 #include <any>
 #include <utility>
 
@@ -34,7 +35,7 @@ template <SymTypes Ty> struct Destruct {
     auto a = std::any_cast<std::pair<std::any, std::any>>(vs).first;
     auto tail = std::any_cast<std::pair<std::any, std::any>>(vs).second;
     auto b =
-        std::any_cast<std::pair<std::any, std::any>>(std::move(tail)).first;
+        crane_any_cast<std::pair<std::any, std::any>>(std::move(tail)).first;
     return std::make_pair(std::any(a), std::any(b));
   }
 };

@@ -59,7 +59,11 @@ template <class T> T crane_any_cast(const std::any &a);
 // [std::any] (double-boxed), which is not how erased-domain values are
 // represented, and throws [std::bad_any_cast].
 template <class A> decltype(auto) crane_erase_fn_unbox(std::any &as) {
-  if constexpr (std::is_same_v<A, std::any>) {
+  // [A] is taken from the callable's own signature, so it may be a reference
+  // or const-qualified ([const std::any&] for a lambda that declares its
+  // erased parameter by reference); the question is about the underlying
+  // type.
+  if constexpr (std::is_same_v<std::remove_cvref_t<A>, std::any>) {
     return (as);
   } else {
     return std::any_cast<A>(as);
