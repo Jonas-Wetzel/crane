@@ -8655,3 +8655,14 @@
   (alias runtest)
   (deps map_over_partial_app.t.exe)
   (action (run ./map_over_partial_app.t.exe))))
+
+(subdir hkt_partial_app_instance
+ (rule
+  (targets hkt_partial_app_instance.t.exe)
+  (deps HktPartialAppInstance.vo hkt_partial_app_instance.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} hkt_partial_app_instance.t.exe hkt_partial_app_instance.cpp hkt_partial_app_instance.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps hkt_partial_app_instance.t.exe)
+  (action (run ./hkt_partial_app_instance.t.exe))))

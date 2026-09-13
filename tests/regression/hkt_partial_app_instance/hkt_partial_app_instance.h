@@ -95,11 +95,11 @@ struct HktPartialAppInstance {
   }
 
   template <typename T1> struct pf {
-    template <typename _A0, typename _A1> using F = std::pair<_A0, _A1>;
+    template <typename _A0> using F = std::pair<T1, _A0>;
 
     template <typename _A0, typename _A1>
-    static std::pair<_A1, std::any> fm(std::function<_A1(_A0)> f,
-                                       std::pair<_A0, std::any> p) {
+    static std::pair<T1, _A1> fm(std::function<_A1(_A0)> f,
+                                 std::pair<T1, _A0> p) {
       return std::make_pair(p.first, f(p.second));
     }
   };

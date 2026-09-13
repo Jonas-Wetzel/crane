@@ -141,6 +141,19 @@ let method_tvar_count class_ref ty =
   else
     max 0 (Mlutil.type_maxvar ty - List.length (Table.get_ind_ip_vars class_ref))
 
+(** The arguments a higher-kinded carrier has already fixed: [Fn (prod X)]
+    fixes the pair's first component, while the eta-expanded [option _] fixes
+    nothing.  What is left is what the class still applies -- as the alias
+    template's parameters, or as the method's own type variables. *)
+let hkt_carrier_fixed_args arity ml_ty =
+  match ml_ty with
+  | Miniml.Tglob (r, args, _) ->
+    let given = List.length args in
+    let total = max arity (max given (Table.get_type_scheme_arity r)) in
+    let fixed = max 0 (total - arity) in
+    if given >= fixed then safe_firstn fixed args else []
+  | _ -> []
+
 (** Render a type CONSTRUCTOR argument as an alias template body: the [list] of
     [Instance ListContainer : Container list] becomes [List<_A0>], to be
     emitted as [template <typename _A0> using C = List<_A0>;].  The element
@@ -150,10 +163,17 @@ let method_tvar_count class_ref ty =
 let hkt_carrier_alias base arity ml_ty =
   match ml_ty with
   | Miniml.Tglob (r, args, es) ->
-    let arity = max arity (max (List.length args) (Table.get_type_scheme_arity r)) in
-    ( List.init arity hkt_alias_param_name,
+    let kept = hkt_carrier_fixed_args arity ml_ty in
+    let params =
+      max arity (max (List.length args) (Table.get_type_scheme_arity r))
+      - List.length kept
+    in
+    ( List.init params hkt_alias_param_name,
       Miniml.Tglob
-        (r, List.init arity (fun i -> Miniml.Tvar (Schematic, (base + 1 + i))), es) )
+        ( r,
+          kept
+          @ List.init params (fun i -> Miniml.Tvar (Schematic, base + 1 + i)),
+          es ) )
   | _ when arity = 1 ->
     (* An unnamed carrier is the identity constructor: [F<_A0> = _A0]. *)
     ([hkt_alias_param_name 0], Miniml.Tvar (Schematic, (base + 1)))
@@ -784,7 +804,14 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
                 match t with
                 | Miniml.Tglob (r, _ :: _, es)
                   when Table.is_hkt_param class_ref i ->
-                  Miniml.Tglob (r, [], es)
+                  (* Only the eta-expanded arguments come off: a carrier that
+                     arrived partially applied keeps the ones it fixed. *)
+                  Miniml.Tglob
+                    ( r,
+                      hkt_carrier_fixed_args
+                        (Table.get_ind_hkt_arity class_ref i)
+                        t,
+                      es )
                 | t -> t )
               type_args
           in
