@@ -172,28 +172,27 @@ struct SigtErasedFnParam {
 
   static uint64_t
   unpack(const SigT<std::any, std::pair<std::any, std::any>> &p);
-  static inline const List<packed> items =
-      List<SigT<std::any, std::pair<std::any, std::any>>>::cons(
-          pack<uint64_t>(UINT64_C(5), [](uint64_t n) { return n; }),
-          List<SigT<std::any, std::pair<std::any, std::any>>>::cons(
-              pack<bool>(true,
-                         [](bool b) {
-                           if (b) {
-                             return UINT64_C(1);
-                           } else {
-                             return UINT64_C(0);
-                           }
-                         }),
-              List<SigT<std::any, std::pair<std::any, std::any>>>::cons(
-                  pack<List<uint64_t>>(
+  static inline const List<packed> items = List<packed>::cons(
+      pack<uint64_t>(UINT64_C(5), [](uint64_t n) { return n; }),
+      List<packed>::cons(
+          pack<bool>(true,
+                     [](bool b) {
+                       if (b) {
+                         return UINT64_C(1);
+                       } else {
+                         return UINT64_C(0);
+                       }
+                     }),
+          List<packed>::cons(
+              pack<List<uint64_t>>(
+                  List<uint64_t>::cons(
+                      UINT64_C(1),
                       List<uint64_t>::cons(
-                          UINT64_C(1),
-                          List<uint64_t>::cons(
-                              UINT64_C(2),
-                              List<uint64_t>::cons(UINT64_C(3),
-                                                   List<uint64_t>::nil()))),
-                      [](const List<uint64_t> &_x) { return _x.length(); }),
-                  List<SigT<std::any, std::pair<std::any, std::any>>>::nil())));
+                          UINT64_C(2),
+                          List<uint64_t>::cons(UINT64_C(3),
+                                               List<uint64_t>::nil()))),
+                  [](const List<uint64_t> &_x) { return _x.length(); }),
+              List<packed>::nil())));
   static inline const uint64_t total = items.template fold_left<uint64_t>(
       [](uint64_t acc, const auto &p) { return (acc + unpack(p)); },
       UINT64_C(0));

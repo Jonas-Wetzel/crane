@@ -266,7 +266,7 @@ struct LoopifySequences {
           auto heads_impl = [](auto &_self_heads,
                                const List<List<T1>> &l) -> List<T1> {
             if (std::holds_alternative<typename List<List<T1>>::Nil>(l.v())) {
-              return List<T1>::nil();
+              return List<List<T1>>::nil();
             } else {
               const auto &[a00, a10] =
                   std::get<typename List<List<T1>>::Cons>(l.v());
@@ -275,7 +275,8 @@ struct LoopifySequences {
               } else {
                 const auto &[a01, a11] =
                     std::get<typename List<T1>::Cons>(a00.v());
-                return List<T1>::cons(a01, _self_heads(_self_heads, *a10));
+                return List<List<T1>>::cons(a01,
+                                            _self_heads(_self_heads, *a10));
               }
             }
           };

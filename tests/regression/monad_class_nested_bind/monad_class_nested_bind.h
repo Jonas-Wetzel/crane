@@ -249,7 +249,7 @@ struct MonadClassNestedBind {
     template <typename _A0> using M = List<_A0>;
 
     template <typename _A0> static List<_A0> ret(_A0 x) {
-      return List<_A0>::cons(x, List<std::any>::nil());
+      return List<_A0>::cons(x, List<_A0>::nil());
     }
 
     template <typename _A0, typename _A1>

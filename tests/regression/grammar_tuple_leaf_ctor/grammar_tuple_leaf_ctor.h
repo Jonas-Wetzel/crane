@@ -218,41 +218,32 @@ using predicate_semty = std::any;
 using action_semty = std::any;
 using production_semty = std::pair<predicate_semty, action_semty>;
 using grammar_entry = SigT<production, production_semty>;
-const List<grammar_entry> entries = List<
-    SigT<std::pair<std::any, List<Symbol>>, std::pair<std::any, std::any>>>::
-    cons(
+const List<grammar_entry> entries = List<grammar_entry>::cons(
+    SigT<std::pair<std::any, List<Symbol>>, std::pair<std::any, std::any>>::
+        existt(std::make_pair(std::any(),
+                              List<Symbol>::cons(Symbol::t(Terminal::TSTRING),
+                                                 List<Symbol>::nil())),
+               std::make_pair(
+                   std::any(crane_erase_fn([](const auto &) { return true; })),
+                   std::any(crane_erase_fn([](const auto &tup) {
+                     const auto &[s, _x] =
+                         std::any_cast<std::pair<std::any, std::any>>(tup);
+                     return Val::vstr(std::any_cast<std::string>(s));
+                   })))),
+    List<grammar_entry>::cons(
         SigT<std::pair<std::any, List<Symbol>>, std::pair<std::any, std::any>>::
             existt(
-                std::make_pair(std::any(),
-                               List<Symbol>::cons(Symbol::t(Terminal::TSTRING),
-                                                  List<Symbol>::nil())),
+                std::make_pair(
+                    std::any(), List<Symbol>::cons(Symbol::t(Terminal::TINT),
+                                                   List<Symbol>::nil())),
                 std::make_pair(
                     std::any(crane_erase_fn([](const auto &) { return true; })),
                     std::any(crane_erase_fn([](const auto &tup) {
-                      const auto &[s, _x] =
+                      const auto &[i, _x] =
                           std::any_cast<std::pair<std::any, std::any>>(tup);
-                      return Val::vstr(std::any_cast<std::string>(s));
+                      return Val::vint(std::any_cast<uint64_t>(i));
                     })))),
-        List<SigT<std::pair<std::any, List<Symbol>>,
-                  std::pair<std::any, std::any>>>::
-            cons(SigT<std::pair<std::any, List<Symbol>>,
-                      std::pair<std::any, std::any>>::
-                     existt(
-                         std::make_pair(std::any(),
-                                        List<Symbol>::cons(
-                                            Symbol::t(Terminal::TINT),
-                                            List<Symbol>::nil())),
-                         std::make_pair(
-                             std::any(crane_erase_fn(
-                                 [](const auto &) { return true; })),
-                             std::any(crane_erase_fn([](const auto &tup) {
-                               const auto &[i, _x] =
-                                   std::any_cast<std::pair<std::any, std::any>>(
-                                       tup);
-                               return Val::vint(std::any_cast<uint64_t>(i));
-                             })))),
-                 List<SigT<std::pair<std::any, List<Symbol>>,
-                           std::pair<std::any, std::any>>>::nil()));
+        List<grammar_entry>::nil()));
 uint64_t num_entries(std::monostate _x);
 
 #endif // INCLUDED_GRAMMAR_TUPLE_LEAF_CTOR

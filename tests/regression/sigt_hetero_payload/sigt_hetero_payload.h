@@ -235,19 +235,17 @@ struct SigtHeteroPayload {
   }
 
   static inline const List<item> items =
-      List<SigT<std::any, std::pair<std::any, std::any>>>::cons(
-          mk<Nat>(Nat::s(Nat::s(Nat::s(Nat::s(Nat::s(Nat::o()))))),
-                  [](Nat n) { return n; }),
-          List<SigT<std::any, std::pair<std::any, std::any>>>::cons(
-              mk<bool>(true,
-                       [](bool b) {
-                         if (b) {
-                           return Nat::s(Nat::o());
-                         } else {
-                           return Nat::o();
-                         }
-                       }),
-              List<SigT<std::any, std::pair<std::any, std::any>>>::nil()));
+      List<item>::cons(mk<Nat>(Nat::s(Nat::s(Nat::s(Nat::s(Nat::s(Nat::o()))))),
+                               [](Nat n) { return n; }),
+                       List<item>::cons(mk<bool>(true,
+                                                 [](bool b) {
+                                                   if (b) {
+                                                     return Nat::s(Nat::o());
+                                                   } else {
+                                                     return Nat::o();
+                                                   }
+                                                 }),
+                                        List<item>::nil()));
   static inline const Nat run = items.template fold_right<Nat>(
       [](const auto &i, const Nat &acc) {
         const auto &[x, a1] = i;

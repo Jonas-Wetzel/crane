@@ -6170,6 +6170,20 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
               ts
         | _ -> ts
       in
+      (* Where the position already spells this inductive, it -- not the
+         constructor's own type annotation -- says how the type arguments are
+         written.  An element type that reached the slot through one of the
+         callee's type variables keeps the currying the declaration wrote it
+         at: once a function type has been substituted for a type variable,
+         its arrows are indistinguishable from the callee's own, so converting
+         the annotation cannot recover the shape. *)
+      let temps_from_slot ind temps =
+        match Option.map (unfold_cpp_typedef env) expected_ty with
+        | Some (Tglob (ind', args, _))
+          when globref_equal ind' ind && List.length args = List.length temps ->
+          args
+        | _ -> temps
+      in
       (* Generate: Type<temps>::ctor::Constructor_(args) *)
       let gen_ctor_call args =
         match ty with
@@ -6224,6 +6238,14 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
               tys
           in
           let temps = template_params_of_ml ~curry:false env tys in
+          (* Where the position expects this very inductive, it -- not the
+             constructor's own type annotation -- says how the arguments are
+             spelled.  An element type that reached the slot through one of
+             the callee's type variables keeps the currying the declaration
+             wrote it at, which converting the annotation cannot know: the
+             arrows of a function substituted into a type variable are
+             indistinguishable from the callee's own. *)
+          let temps = temps_from_slot n temps in
           (* Normalize out-of-range [Tvar(_, None)] type args to [std::any] when
              this constructor is nested as an argument of another constructor.
              Such a Tvar prints as a bogus, undeclared template parameter name
@@ -6467,7 +6489,7 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
               | None -> tys_orig )
             | _ -> tys_orig
           in
-          let temps = template_params_of_ml env tys_filt in
+          let temps = temps_from_slot n (template_params_of_ml env tys_filt) in
           if Table.has_dependent_params n then
             let expected_temps =
               expected_type_args_from_return env ?slot:expected_ty n
@@ -7040,6 +7062,15 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
               | _ when is_erased_rel ->
                 let ct = cpp_of_ml env ft in
                 if prints_as_any ct then None else Some ct
+              | Miniml.Tglob (g, _, _)
+                when (match resolve_tmeta ty with
+                     | Miniml.Tglob (n_ind, _, _) -> globref_equal g n_ind
+                     | _ -> false) ->
+                (* The recursive spine: every cell of a list is the same C++
+                   type, so the tail is built at the instantiation this cell
+                   was, not at the one its own annotation converts to. *)
+                let ct = instantiated_field_cpp_ty ft in
+                if has_tany_in_type ct then None else Some ct
               | _ ->
                 (* A field whose instantiated C++ type is a curried function
                    (e.g. [A -> A] at [A = nat -> nat]) must keep its currying:
@@ -8307,6 +8338,21 @@ and eta_fun ?(slot = empty_slot) ?expected_ty env f args =
            and reaches the slot at the arity the callee declared the parameter
            at, for the same reason a lambda does. *)
         | MLapp _ -> param_expected_at_declared_arity ()
+        (* A constructed value is spelled here for the first time, so only
+           the slot can say how its type arguments are curried -- but only
+           where the currying is in fact what the annotation would get wrong.
+           Anywhere else the constructor's own annotation is the better
+           source: it knows this producer's instantiation, which the
+           parameter type may have erased. *)
+        | MLcons _
+          when (match
+                  ( param_expected_at_declared_arity (),
+                    param_expected_cpp_ty
+                      ~at:(i + List.length typeclass_ml_args) fn_param_ml_tys )
+                with
+               | Some recurried, Some plain -> not (recurried = plain)
+               | _ -> false) ->
+          param_expected_at_declared_arity ()
         | _ -> None ) )
       in
       let arg_expected_ml_ty =

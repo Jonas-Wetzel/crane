@@ -540,14 +540,14 @@ struct LoopifyLists {
         auto take_impl = [](auto &_self_take, uint64_t k,
                             const list<T1> &lst) -> list<T1> {
           if (k <= 0) {
-            return list<T1>::nil();
+            return list<list<T1>>::nil();
           } else {
             uint64_t m = k - 1;
             if (std::holds_alternative<typename list<T1>::Nil>(lst.v())) {
-              return list<T1>::nil();
+              return list<list<T1>>::nil();
             } else {
               const auto &[a0, a1] = std::get<typename list<T1>::Cons>(lst.v());
-              return list<T1>::cons(a0, _self_take(_self_take, m, *a1));
+              return list<list<T1>>::cons(a0, _self_take(_self_take, m, *a1));
             }
           }
         };
@@ -564,7 +564,7 @@ struct LoopifyLists {
               uint64_t m = _loop_k - 1;
               if (std::holds_alternative<typename list<T1>::Nil>(
                       _loop_lst.v_mut())) {
-                return list<T1>::nil();
+                return list<list<T1>>::nil();
               } else {
                 auto &[a00, a10] =
                     std::get<typename list<T1>::Cons>(_loop_lst.v_mut());
@@ -927,16 +927,17 @@ struct LoopifyLists {
         auto map_head_impl = [](auto &_self_map_head,
                                 const list<list<T1>> &l) -> list<T1> {
           if (std::holds_alternative<typename list<list<T1>>::Nil>(l.v())) {
-            return list<T1>::nil();
+            return list<list<T1>>::nil();
           } else {
             const auto &[a0, a1] =
                 std::get<typename list<list<T1>>::Cons>(l.v());
             if (std::holds_alternative<typename list<T1>::Nil>(a0.v())) {
-              return list<T1>::nil();
+              return list<list<T1>>::nil();
             } else {
               const auto &[a00, a10] =
                   std::get<typename list<T1>::Cons>(a0.v());
-              return list<T1>::cons(a00, _self_map_head(_self_map_head, *a1));
+              return list<list<T1>>::cons(a00,
+                                          _self_map_head(_self_map_head, *a1));
             }
           }
         };

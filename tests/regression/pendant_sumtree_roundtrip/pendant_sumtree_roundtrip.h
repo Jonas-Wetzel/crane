@@ -788,10 +788,12 @@ struct PendantSumtreeRoundtripCase {
       CertifiedPendant{sample_meta_c, digits_069};
   static inline const CertifiedPendant pendant_5 =
       CertifiedPendant{sample_meta_a, digits_5};
-  static inline const List<T0<digit>> sample_multi_digits = List<T0<T>>::cons0(
-      digits_731,
-      List<T0<T>>::cons0(digits_462,
-                         List<T0<T>>::cons0(digits_269, List<T0<T>>::nil0())));
+  static inline const List<T0<digit>> sample_multi_digits =
+      List<T0<digit>>::cons0(
+          digits_731,
+          List<T0<digit>>::cons0(
+              digits_462,
+              List<T0<digit>>::cons0(digits_269, List<T0<digit>>::nil0())));
   static inline const bool sample_multi_roundtrip_ok = []() -> bool {
     auto _cs = decode_multi(UINT64_C(3),
                             encode_multi(UINT64_C(3), sample_multi_digits));

@@ -175,20 +175,16 @@ struct ErasedPairFnCall {
 
   static uint64_t
   size(const SigT<std::any, std::pair<List<std::any>, std::any>> &b);
-  static inline const List<boxed> items =
-      List<SigT<std::any, std::pair<List<std::any>, std::any>>>::cons(
-          mk<uint64_t>(List<uint64_t>::cons(
-              UINT64_C(1),
-              List<uint64_t>::cons(
-                  UINT64_C(2),
-                  List<uint64_t>::cons(UINT64_C(3), List<uint64_t>::nil())))),
-          List<SigT<std::any, std::pair<List<std::any>, std::any>>>::cons(
-              mk<bool>(List<bool>::cons(
-                  true, List<bool>::cons(false, List<bool>::nil()))),
-              List<SigT<std::any, std::pair<List<std::any>, std::any>>>::cons(
-                  mk<uint64_t>(List<uint64_t>::nil()),
-                  List<SigT<std::any,
-                            std::pair<List<std::any>, std::any>>>::nil())));
+  static inline const List<boxed> items = List<boxed>::cons(
+      mk<uint64_t>(List<uint64_t>::cons(
+          UINT64_C(1),
+          List<uint64_t>::cons(
+              UINT64_C(2),
+              List<uint64_t>::cons(UINT64_C(3), List<uint64_t>::nil())))),
+      List<boxed>::cons(mk<bool>(List<bool>::cons(
+                            true, List<bool>::cons(false, List<bool>::nil()))),
+                        List<boxed>::cons(mk<uint64_t>(List<uint64_t>::nil()),
+                                          List<boxed>::nil())));
   static inline const uint64_t total = items.template fold_left<uint64_t>(
       [](uint64_t acc, const auto &b) { return (acc + size(b)); }, UINT64_C(0));
 };

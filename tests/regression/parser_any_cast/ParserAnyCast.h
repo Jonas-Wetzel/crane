@@ -53,11 +53,9 @@ struct ParserAnyCast {
 
   static const Datatypes::List<entry> &test_entries() {
     static const Datatypes::List<entry> v =
-        Datatypes::template List<Specif::SigT<Tag, std::any>>::cons(
-            entry_a(),
-            Datatypes::template List<Specif::SigT<Tag, std::any>>::cons(
-                entry_b(),
-                Datatypes::template List<Specif::SigT<Tag, std::any>>::nil()));
+        Datatypes::template List<entry>::cons(
+            entry_a(), Datatypes::template List<entry>::cons(
+                           entry_b(), Datatypes::template List<entry>::nil()));
     return v;
   }
 

@@ -133,18 +133,16 @@ struct SigtPairFnPayload {
   }
 
   static inline const List<item> items =
-      List<SigT<std::any, std::pair<std::any, std::any>>>::cons(
-          mk<uint64_t>(UINT64_C(3), [](uint64_t n) { return n; }),
-          List<SigT<std::any, std::pair<std::any, std::any>>>::cons(
-              mk<bool>(true,
-                       [](bool b) {
-                         if (b) {
-                           return UINT64_C(1);
-                         } else {
-                           return UINT64_C(0);
-                         }
-                       }),
-              List<SigT<std::any, std::pair<std::any, std::any>>>::nil()));
+      List<item>::cons(mk<uint64_t>(UINT64_C(3), [](uint64_t n) { return n; }),
+                       List<item>::cons(mk<bool>(true,
+                                                 [](bool b) {
+                                                   if (b) {
+                                                     return UINT64_C(1);
+                                                   } else {
+                                                     return UINT64_C(0);
+                                                   }
+                                                 }),
+                                        List<item>::nil()));
   static uint64_t
   score(const SigT<std::any, std::pair<std::any, std::any>> &it);
   static inline const uint64_t go = items.template fold_left<uint64_t>(

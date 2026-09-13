@@ -452,10 +452,9 @@ struct TopologicalSort {
     List<T1> elems = get_elems<T1>(eqb_node, l);
     return bsl::move(elems).template fold_right<List<entry<T1>>>(
         [=](const T1 &e, List<bsl::pair<T1, List<T1>>> ret) mutable {
-          return List<bsl::pair<T1, List<T1>>>::cons(
-              make_entry<T1>(eqb_node, l, e), ret);
+          return List<entry<T1>>::cons(make_entry<T1>(eqb_node, l, e), ret);
         },
-        List<bsl::pair<T1, List<T1>>>::nil());
+        List<entry<T1>>::nil());
   }
   template <typename T1, typename F0>
     requires bsl::is_invocable_r_v<bool, F0 &, T1 &, T1 &>

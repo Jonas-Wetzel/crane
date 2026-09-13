@@ -193,11 +193,10 @@ struct SigtListHeterogeneousBox {
   /// This is a producer-side boxing gap: no accessor is involved, unlike
   /// sigt_type_witness_container and sigt_erased_structured_binding.
   using anyv = SigT<std::any, std::any>;
-  static inline const List<anyv> items = List<SigT<std::any, std::any>>::cons(
+  static inline const List<anyv> items = List<anyv>::cons(
       SigT<std::any, std::any>::existt(std::any(), Nat::s(Nat::o())),
-      List<SigT<std::any, std::any>>::cons(
-          SigT<std::any, std::any>::existt(std::any(), true),
-          List<SigT<std::any, std::any>>::nil()));
+      List<anyv>::cons(SigT<std::any, std::any>::existt(std::any(), true),
+                       List<anyv>::nil()));
   static Nat count(const List<anyv> &x0_);
   static inline const Nat run = count(items);
 };

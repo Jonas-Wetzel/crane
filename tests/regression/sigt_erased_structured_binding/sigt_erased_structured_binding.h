@@ -227,11 +227,9 @@ struct SigtErasedStructuredBinding {
   static Nat score(const SigT<std::any, std::pair<std::any, std::any>> &i);
   static Nat
   total(const List<SigT<std::any, std::pair<std::any, std::any>>> &l);
-  static inline const List<item> ex =
-      List<SigT<std::any, std::pair<std::any, std::any>>>::cons(
-          mkitem<Nat>(Nat::s(Nat::s(Nat::s(Nat::o()))),
-                      [](Nat n) { return n; }),
-          List<SigT<std::any, std::pair<std::any, std::any>>>::nil());
+  static inline const List<item> ex = List<item>::cons(
+      mkitem<Nat>(Nat::s(Nat::s(Nat::s(Nat::o()))), [](Nat n) { return n; }),
+      List<item>::nil());
   static inline const Nat run = total(ex);
 };
 

@@ -351,15 +351,19 @@ bool PendantSumtreeRoundtripCase::option_nat_is_some(
 
 T0<PendantSumtreeRoundtripCase::digit>
 PendantSumtreeRoundtripCase::digit_vec1(T a) {
-  return T0<T>::cons(std::move(a), UINT64_C(0), T0<T>::nil());
+  return T0<PendantSumtreeRoundtripCase::digit>::cons(
+      std::move(a), UINT64_C(0), T0<PendantSumtreeRoundtripCase::digit>::nil());
 }
 
 T0<PendantSumtreeRoundtripCase::digit>
 PendantSumtreeRoundtripCase::digit_vec3(T a, T b, T c) {
-  return T0<T>::cons(
+  return T0<PendantSumtreeRoundtripCase::digit>::cons(
       std::move(a), UINT64_C(2),
-      T0<T>::cons(std::move(b), UINT64_C(1),
-                  T0<T>::cons(std::move(c), UINT64_C(0), T0<T>::nil())));
+      T0<PendantSumtreeRoundtripCase::digit>::cons(
+          std::move(b), UINT64_C(1),
+          T0<PendantSumtreeRoundtripCase::digit>::cons(
+              std::move(c), UINT64_C(0),
+              T0<PendantSumtreeRoundtripCase::digit>::nil())));
 }
 
 T Fin::of_nat_lt(uint64_t p, uint64_t n) {
