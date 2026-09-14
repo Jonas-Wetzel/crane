@@ -20,6 +20,28 @@
 
 
 
+(subdir anon_lift_name_collision
+ (rule
+  (targets anon_lift_name_collision.t.exe)
+  (deps AnonLiftNameCollision.vo anon_lift_name_collision.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} anon_lift_name_collision.t.exe anon_lift_name_collision.cpp anon_lift_name_collision.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps anon_lift_name_collision.t.exe)
+  (action (run ./anon_lift_name_collision.t.exe))))
+
+(subdir duplicate_class_name_modules
+ (rule
+  (targets duplicate_class_name_modules.t.exe)
+  (deps DuplicateClassNameModules.vo duplicate_class_name_modules.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} duplicate_class_name_modules.t.exe duplicate_class_name_modules.cpp duplicate_class_name_modules.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps duplicate_class_name_modules.t.exe)
+  (action (run ./duplicate_class_name_modules.t.exe))))
+
 (subdir extraction_path_traversal
  (rule
   (targets extraction_path_traversal.t.exe)
@@ -138,6 +160,18 @@
   (alias runtest)
   (deps hkt_single_ctor_instance_body.t.exe)
   (action (run ./hkt_single_ctor_instance_body.t.exe))))
+
+(subdir let_polymorphic_lift_rename
+ (rule
+  (targets let_polymorphic_lift_rename.t.exe)
+  (deps LetPolymorphicLiftRename.vo let_polymorphic_lift_rename.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} let_polymorphic_lift_rename.t.exe let_polymorphic_lift_rename.cpp let_polymorphic_lift_rename.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps let_polymorphic_lift_rename.t.exe)
+  (action (run ./let_polymorphic_lift_rename.t.exe))))
+
 (subdir module_alias_factory_name
  (rule
   (targets module_alias_factory_name.t.exe)

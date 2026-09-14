@@ -110,16 +110,6 @@
   (alias runtest)
   (deps cps_continuation_copy.t.exe)
   (action (run ./cps_continuation_copy.t.exe))))
-(subdir anon_lift_name_collision
- (rule
-  (targets anon_lift_name_collision.t.exe)
-  (deps AnonLiftNameCollision.vo anon_lift_name_collision.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} anon_lift_name_collision.t.exe anon_lift_name_collision.cpp anon_lift_name_collision.t.cpp)))
- (rule
-  (alias runtest)
-  (deps anon_lift_name_collision.t.exe)
-  (action (run ./anon_lift_name_collision.t.exe))))
 
 (subdir dependent_match_branch_types
  (rule
@@ -131,17 +121,6 @@
   (alias runtest)
   (deps dependent_match_branch_types.t.exe)
   (action (run ./dependent_match_branch_types.t.exe))))
-
-(subdir duplicate_class_name_modules
- (rule
-  (targets duplicate_class_name_modules.t.exe)
-  (deps DuplicateClassNameModules.vo duplicate_class_name_modules.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} duplicate_class_name_modules.t.exe duplicate_class_name_modules.cpp duplicate_class_name_modules.t.cpp)))
- (rule
-  (alias runtest)
-  (deps duplicate_class_name_modules.t.exe)
-  (action (run ./duplicate_class_name_modules.t.exe))))
 
 (subdir erased_fn_in_recursive_container
  (rule
@@ -186,17 +165,6 @@
   (alias runtest)
   (deps instance_method_ignores_arg.t.exe)
   (action (run ./instance_method_ignores_arg.t.exe))))
-
-(subdir let_polymorphic_lift_rename
- (rule
-  (targets let_polymorphic_lift_rename.t.exe)
-  (deps LetPolymorphicLiftRename.vo let_polymorphic_lift_rename.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} let_polymorphic_lift_rename.t.exe let_polymorphic_lift_rename.cpp let_polymorphic_lift_rename.t.cpp)))
- (rule
-  (alias runtest)
-  (deps let_polymorphic_lift_rename.t.exe)
-  (action (run ./let_polymorphic_lift_rename.t.exe))))
 
 (subdir multi_arg_function_value
  (rule

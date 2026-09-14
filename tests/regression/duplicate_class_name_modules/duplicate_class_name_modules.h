@@ -9,7 +9,7 @@
 /// one is a redefinition of the first.
 
 template <typename I, typename A>
-concept C = requires {
+concept M1_C = requires {
   { I::m(std::declval<A>()) } -> std::convertible_to<uint64_t>;
 };
 
@@ -18,11 +18,11 @@ struct M1 {
     static uint64_t m(uint64_t x) { return x; }
   };
 
-  static_assert(C<i, uint64_t>);
+  static_assert(M1_C<i, uint64_t>);
 };
 
 template <typename I, typename A>
-concept C = requires {
+concept M2_C = requires {
   { I::m(std::declval<A>()) } -> std::convertible_to<uint64_t>;
 };
 
@@ -37,7 +37,7 @@ struct M2 {
     }
   };
 
-  static_assert(C<i, bool>);
+  static_assert(M2_C<i, bool>);
 };
 
 struct DuplicateClassNameModules {

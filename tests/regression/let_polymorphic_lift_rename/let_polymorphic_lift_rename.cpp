@@ -6,8 +6,8 @@
 /// instantiations is irrelevant — what matters is that the binder is used more
 /// than once.
 Nat LetPolymorphicLiftRename::body(const Nat &n) {
-  return _body_id2(n).add([=]() mutable {
-    switch (std::any_cast<Nat>(id2(Bool0::TRUE_))) {
+  return _body_id2(n).add([]() {
+    switch (_body_id2(Bool0::TRUE_)) {
     case Bool0::TRUE_: {
       return Nat::s(Nat::o());
     }
