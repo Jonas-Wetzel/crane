@@ -1753,6 +1753,64 @@ let get_structure_analysis () =
     The visibility stack is pushed exactly as a rendering pass would push it:
     the analysis is a function of the structure, but the helpers it calls read
     the stack, and this is a relocation, not a re-derivation. *)
+(** Copy a structure analysis's decisions into the tables rendering reads them
+    back from.
+
+    Every field of {!Structure_analysis.t} but [sorted_modules] exists to be
+    read while rendering, so they are installed together, here: rendering only
+    ever reads these tables, and so cannot render a use before the decision it
+    depends on has been made.  The record is destructured field by field under
+    warning 9, which is what makes a field added to the analysis and not
+    handled here a compile error rather than a decision nothing acts on. *)
+let install_analysis
+    ({ sorted_modules;
+       inductive_names;
+       global_scope_enums;
+       collision_wrappers;
+       functor_app_sources = app_sources;
+       eponymous_records;
+       concept_renames } [@warning "@9"] :
+      Structure_analysis.t ) : unit =
+  Hashtbl.reset global_inductive_names;
+  List.iter
+    (fun (name, mp) -> Hashtbl.replace global_inductive_names name mp)
+    inductive_names;
+  Hashtbl.reset global_scope_enum_table;
+  List.iter
+    (fun r -> Hashtbl.replace global_scope_enum_table r ())
+    global_scope_enums;
+  List.iter
+    (fun (r, name) -> Hashtbl.replace concept_name_table r name)
+    concept_renames;
+  List.iter
+    (fun (mp, src) -> Hashtbl.replace functor_app_sources mp src)
+    app_sources;
+  List.iter register_eponymous_record eponymous_records;
+  List.iter
+    (fun (mp, name) ->
+      Hashtbl.replace wrapper_module_table mp name;
+      Hashtbl.replace collision_wrapper_table mp () )
+    collision_wrappers;
+  List.iter
+    (fun (mi : Structure_analysis.module_info) ->
+      match mi.wrapper_name with
+      | None -> ()
+      | Some name ->
+        Hashtbl.replace wrapper_module_table mi.modpath name;
+        (* A wrapper module's type aliases are emitted at global C++ scope, as
+           [using T = ...;] rather than members of the wrapper struct, so
+           {!Cpp_names.struct_qualifier_for} must not qualify them in the .cpp
+           file.  Which module a declaration is emitted in is layout, so it is
+           settled here rather than while emitting it. *)
+        List.iter
+          (fun (_l, se) ->
+            match se with
+            | SEdecl (Dtype (r, _, _)) ->
+              Cpp_state.register_global_scope_type_alias r
+            | _ -> () )
+          mi.sels )
+    sorted_modules
+
 let prepare_structure s =
   let initial_mps =
     List.filter_map (fun (mp, _) -> if is_modfile mp then Some mp else None) s
@@ -1767,50 +1825,7 @@ let prepare_structure s =
         Method_registry.create
           ~ret_is_erased:Translation.return_type_is_erased s );
   let analysis = Structure_analysis.analyze (get_method_registry ()) s in
-  Hashtbl.clear global_inductive_names;
-  List.iter
-    (fun (name, mp) -> Hashtbl.replace global_inductive_names name mp)
-    analysis.inductive_names;
-  Hashtbl.clear global_scope_enum_table;
-  List.iter
-    (fun r -> Hashtbl.replace global_scope_enum_table r ())
-    analysis.global_scope_enums;
-  List.iter
-    (fun (mi : Structure_analysis.module_info) ->
-      match mi.wrapper_name with
-      | Some name -> Hashtbl.replace wrapper_module_table mi.modpath name
-      | None -> () )
-    analysis.sorted_modules;
-  List.iter
-    (fun (cmp, name) ->
-      Hashtbl.replace wrapper_module_table cmp name;
-      Hashtbl.replace collision_wrapper_table cmp () )
-    analysis.collision_wrappers;
-  List.iter register_eponymous_record analysis.eponymous_records;
-  List.iter
-    (fun (r, name) -> Hashtbl.replace concept_name_table r name)
-    analysis.concept_renames;
-  List.iter
-    (fun (mp, src) -> Hashtbl.replace functor_app_sources mp src)
-    analysis.functor_app_sources;
-  List.iter
-    (fun (mi : Structure_analysis.module_info) ->
-      match mi.wrapper_name with
-      | None -> ()
-      | Some _ ->
-        (* A wrapper module's type aliases are emitted at global C++ scope, as
-           [using T = ...;] rather than members of the wrapper struct, so
-           {!Cpp_names.struct_qualifier_for} must not qualify them in the .cpp
-           file.  Which module a declaration is emitted in is layout, so it is
-           settled here rather than while emitting it. *)
-        List.iter
-          (fun (_, se) ->
-            match se with
-            | SEdecl (Dtype (r, _, _)) ->
-              Cpp_state.register_global_scope_type_alias r
-            | _ -> () )
-          mi.sels )
-    analysis.sorted_modules;
+  install_analysis analysis;
   List.iter (fun _ -> pop_visible ()) initial_mps;
   structure_analysis := Some analysis
 

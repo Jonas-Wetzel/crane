@@ -560,7 +560,7 @@ let collision_wrapper_table : (ModPath.t, unit) Hashtbl.t = Hashtbl.create 16
 (** The name each type class's concept is emitted under, for the classes whose
     own name does not settle it: a concept is declared at file scope, so two
     classes called [C] in different modules are told apart by their module's
-    name.  Decided by {!Structure_analysis.collect_concept_renames} before any
+    name.  Decided by the structure analysis before any
     rendering, and read by {!Cpp_names.concept_name_of_ref}. *)
 let concept_name_table : (GlobRef.t, string) Hashtbl.t = Hashtbl.create 8
 

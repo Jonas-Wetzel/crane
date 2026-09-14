@@ -293,7 +293,7 @@ val collision_wrapper_table : (Names.module_path, unit) Hashtbl.t
 (** The C++ concept name of each type class whose own name does not settle it,
     because another module declares a class of the same name and a concept is
     declared at file scope. Populated from
-    {!Structure_analysis.collect_concept_renames}; cleared by
+    the structure analysis; cleared by
     [reset_cpp_state]. *)
 val concept_name_table : (Names.GlobRef.t, string) Hashtbl.t
 
