@@ -177,13 +177,3 @@
   (deps multi_arg_function_value.t.exe)
   (action (run ./multi_arg_function_value.t.exe))))
 
-(subdir phantom_type_arg_never_emitted
- (rule
-  (targets phantom_type_arg_never_emitted.t.exe)
-  (deps PhantomTypeArgNeverEmitted.vo phantom_type_arg_never_emitted.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} phantom_type_arg_never_emitted.t.exe phantom_type_arg_never_emitted.cpp phantom_type_arg_never_emitted.t.cpp)))
- (rule
-  (alias runtest)
-  (deps phantom_type_arg_never_emitted.t.exe)
-  (action (run ./phantom_type_arg_never_emitted.t.exe))))

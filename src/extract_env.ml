@@ -436,7 +436,12 @@ let rec extract_structure access env mp reso ~all = function
     let b = Visit.needed_ind mind in
     if all || b then
       let d = Dind (mind, extract_inductive env mind) in
-      if (not b) && logical_decl d then
+      (* An all-[Prop] inductive has no C++ meaning: nothing that reaches it
+         spells it, because every position it could occupy erases.  Drop it
+         even when something asked for it -- a [Prop] type reached through a
+         type argument marks it needed, and emitting it then puts an enum in
+         the header that no declaration refers to. *)
+      if logical_decl d then
         ms
       else (
         (* Skip dependency tracking for inductives with a custom
