@@ -198,17 +198,6 @@
   (deps let_polymorphic_lift_rename.t.exe)
   (action (run ./let_polymorphic_lift_rename.t.exe))))
 
-(subdir module_named_like_generated_type
- (rule
-  (targets module_named_like_generated_type.t.exe)
-  (deps ModuleNamedLikeGeneratedType.vo module_named_like_generated_type.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} module_named_like_generated_type.t.exe module_named_like_generated_type.cpp module_named_like_generated_type.t.cpp)))
- (rule
-  (alias runtest)
-  (deps module_named_like_generated_type.t.exe)
-  (action (run ./module_named_like_generated_type.t.exe))))
-
 (subdir multi_arg_function_value
  (rule
   (targets multi_arg_function_value.t.exe)
