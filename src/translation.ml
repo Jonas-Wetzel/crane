@@ -1987,23 +1987,10 @@ let build_extended_tvar_names sig_indices sig_names body_tvars =
 (** The reference under which an inner fixpoint named [fix_name], lifted out of
     the declaration currently being generated, is emitted.
 
-    The name must be unique per lifted helper: [Cpp.dedup_lifted_decls] keys
-    lifted declarations by name alone, so two helpers sharing a name collapse
-    into a single emitted definition and at least one call site is left
-    dangling.  The enclosing declaration supplies the disambiguator —
-    [current_outer_function_name] while a function body is being generated, and
-    otherwise the declaration currently being generated, which is set for value
-    definitions too. *)
+    The identity is minted by {!Lifted.make} rather than assembled here, so that
+    two helpers cannot become one by agreeing on a spelling; see [lifted.mli]. *)
 let lifted_fix_ref (fix_name : Id.t) : GlobRef.t =
-  let outer_name =
-    match (!tctx).current_outer_function_name with
-    | Some n -> n
-    | None -> (
-      match !Table.current_decl_ref with
-      | Some r -> Common.pp_global_name Term r
-      | None -> "anon" )
-  in
-  GlobRef.VarRef (Id.of_string ("_" ^ outer_name ^ "_" ^ Id.to_string fix_name))
+  Lifted.ref_of (Lifted.make ~origin:!Table.current_decl_ref ~binder:fix_name)
 
 (* Walk an ML AST and collect source-order parameter indices that are NOT
    simply forwarded unchanged at recursive call sites.  [is_self_call depth f]

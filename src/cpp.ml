@@ -601,11 +601,16 @@ let pp_template_param (mbid, mt) =
     ignore (pp_module_type [] mt : module_constraint);
     str "typename " ++ param_name
 
-(** Key identifying a lifted lambda helper, used to emit it only once. *)
+(** The lifted helper a declaration defines, if it defines one, used to emit it
+    only once.
+
+    Asking {!Lifted.of_ref} rather than matching the shape of the name is what
+    keeps an ordinary [Dfun] whose reference happens to be a [VarRef] -- a
+    record field accessor, a [make] factory -- from being mistaken for a
+    helper and deduplicated against one. *)
 let lifted_decl_key = function
-  | Dtemplate (_, _, Dfun ([(GlobRef.VarRef v, _)], _, _, _)) ->
-    Some (Id.to_string v)
-  | Dfun ([(GlobRef.VarRef v, _)], _, _, _) -> Some (Id.to_string v)
+  | Dtemplate (_, _, Dfun ([(r, _)], _, _, _)) | Dfun ([(r, _)], _, _, _) ->
+    Option.map Lifted.name (Lifted.of_ref r)
   | _ -> None
 
 let dedup_lifted_decls ds =
@@ -619,7 +624,7 @@ let dedup_lifted_decls ds =
     ds
 
 (** Lifted helpers already emitted as members of the struct being rendered. *)
-let emitted_member_lifted : (string, unit) Hashtbl.t = Hashtbl.create 16
+let emitted_member_lifted : (Id.t, unit) Hashtbl.t = Hashtbl.create 16
 
 (** Pretty-print a structure element (label, elem) pair. Handles modules, module
     types, and declarations.

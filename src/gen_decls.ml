@@ -767,11 +767,7 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
       (* Set up type variable context for fixpoint lifting. Without this,
          fixpoints inside methods get lifted with wrong names and missing
          template parameters. *)
-      let saved_outer_name = (!tctx).current_outer_function_name in
       let saved_decl_ref = !Table.current_decl_ref in
-      tctx :=
-        { !tctx with
-          current_outer_function_name = Some (Common.pp_global_name Term name) };
       Table.current_decl_ref := Some name;
       set_current_type_vars type_var_names;
       (* Generate static methods for each field *)
@@ -1350,7 +1346,6 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
           []
       in
       (* Restore type variable context *)
-      tctx := { !tctx with current_outer_function_name = saved_outer_name };
       Table.current_decl_ref := saved_decl_ref;
       clear_current_type_vars ();
       (* Compute promoted vars and generate using fields. Promoted vars are
@@ -2633,12 +2628,9 @@ let gen_dfun n b cty ty temps =
      qualified access through the typeclass instance chain. *)
   let saved_promoted_var_map = (!tctx).promoted_var_map in
   tctx := { !tctx with promoted_var_map = promoted_var_resolutions };
-  (* Set the outer function name so inner fixpoints can generate lifted names *)
-  let saved_outer_name = (!tctx).current_outer_function_name in
+  (* Name the declaration being generated: inner fixpoints lifted out of it
+     take their identity from it. *)
   let saved_decl_ref = !Table.current_decl_ref in
-  tctx :=
-    { !tctx with
-      current_outer_function_name = Some (Common.pp_global_name Term n) };
   Table.current_decl_ref := Some n;
   (* Check if the return type is coinductive - if so, wrap body in lazy thunk *)
   let ml_ret = ml_return_type ty in
@@ -2876,7 +2868,6 @@ let gen_dfun n b cty ty temps =
                 (erase_returned_fn_values cod (guard @ sigma_asserts @ b)) ) )
   in
   tctx := { !tctx with current_cpp_return_type = saved_return_type };
-  tctx := { !tctx with current_outer_function_name = saved_outer_name };
   Table.current_decl_ref := saved_decl_ref;
   tctx := { !tctx with promoted_var_map = saved_promoted_var_map };
   (* {b Entry point detection for monadic [main].}

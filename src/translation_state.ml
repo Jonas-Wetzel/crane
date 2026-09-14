@@ -61,8 +61,6 @@ type translation_ctx = {
   (* 1-indexed parameter types for the current function; used to recover
      erased type info at call sites. *)
   current_param_types : (int * ml_type) list;
-  (* Name of the enclosing function, for diagnostic messages. *)
-  current_outer_function_name : string option;
   (* C++ return type of the enclosing function, set by gen_dfun. Used to
      recover erased template type args at call sites where C++ can't deduce
      them from lambda arguments. *)
@@ -183,7 +181,6 @@ let tctx =
         output = {pending_lifted_decls = []; seen_lifted_refs = []};
         current_type_vars = [];
         current_param_types = [];
-        current_outer_function_name = None;
         current_cpp_return_type = None;
         env_types = [];
         current_letin_depth = 0;
