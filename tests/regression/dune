@@ -172,6 +172,17 @@
   (deps if_branch_function_params.t.exe)
   (action (run ./if_branch_function_params.t.exe))))
 
+(subdir instance_method_ignores_arg
+ (rule
+  (targets instance_method_ignores_arg.t.exe)
+  (deps InstanceMethodIgnoresArg.vo instance_method_ignores_arg.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} instance_method_ignores_arg.t.exe instance_method_ignores_arg.cpp instance_method_ignores_arg.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps instance_method_ignores_arg.t.exe)
+  (action (run ./instance_method_ignores_arg.t.exe))))
+
 (subdir let_polymorphic_lift_rename
  (rule
   (targets let_polymorphic_lift_rename.t.exe)

@@ -3797,7 +3797,7 @@ and gen_expr_custom_cons ?expected_ty ?(slot = empty_slot) env (ty : ml_type)
      prevents moving variables that appear more than once across all args). *)
   let gen_ctor_arg ?expected_ty ?(slot = slot) e =
     match e with
-    | MLdummy _ -> Cpp_erasure.converting_ctor Tany []
+    | MLdummy _ -> Cpp_erasure.empty_box
     | MLapp (f, _) | MLmagic (_, MLapp (f, _)) when ml_callee_is_void f ->
       wrap_void_call_as_value (gen_expr ~slot env e)
     | _ -> gen_expr ?expected_ty ~slot env e
@@ -6603,7 +6603,7 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
          constructor args is NOT in move_dead_after and cannot be moved twice. *)
       let gen_ctor_arg ?expected_ty ?(slot = slot) e =
       match e with
-        | MLdummy _ -> Cpp_erasure.converting_ctor Tany []
+        | MLdummy _ -> Cpp_erasure.empty_box
         | MLapp (f, _) | MLmagic (_, MLapp (f, _)) when ml_callee_is_void f ->
           wrap_void_call_as_value (gen_expr ~slot env e)
         | _ -> gen_expr ?expected_ty ~slot env e
@@ -7592,9 +7592,6 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
          (see [ml_codomain_erases_to_any]), wrap the result with
          [std::any_cast<T>] to recover the caller's concrete return type. *)
       | Some fld ->
-        let value_args =
-          List.filter (fun a -> match a with MLdummy _ -> false | _ -> true) args
-        in
         (* A higher-kinded class's instances keep the method's own quantifier:
            each method is a member template, not a signature erased at
            [std::any].  So neither its arguments nor its result are erased
@@ -7626,13 +7623,38 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
              [forall A, (A -> A) -> A -> A], whose index runs past the class's
              own parameters -- are erased in the generated concept, so every
              instance takes them as [std::any]. *)
-          let n_class_params =
-            match typ with Miniml.Tglob (_, args, _) -> List.length args | _ -> 0
+          let class_args =
+            (* The projection is inlined generically -- the [MLcase]'s own
+               annotation still says [C A] -- so the instance's arguments come
+               off the receiver, which names a concrete instance. *)
+            let from_receiver =
+              match t with
+              | MLglob (r, _) | MLmagic (_, MLglob (r, _)) -> (
+                match resolve_tmeta (Table.find_type r) with
+                | Miniml.Tglob (_, (_ :: _ as args), _) -> Some args
+                | _ | (exception Not_found) -> None )
+              | _ -> None
+            in
+            match from_receiver with
+            | Some args -> args
+            | None -> (
+              match typ with Miniml.Tglob (_, args, _) -> args | _ -> [] )
+          in
+          let n_class_params = List.length class_args in
+          (* A class parameter the instance fixed at a type extraction erased
+             entirely is [std::any] on the instance side (see
+             {!Ml_type_util.instance_type_args}); the call has to agree, or it
+             passes the wrong number of arguments. *)
+          let erased_class_param j =
+            match List.nth_opt class_args (j - 1) with
+            | Some t -> isTdummy t
+            | None -> false
           in
           let rec erase_field_tvars ty =
             match resolve_tmeta ty with
             | _ when hkt_class -> ty
-            | Miniml.Tvar (_, j) when j > n_class_params ->
+            | Miniml.Tvar (_, j) when j > n_class_params || erased_class_param j
+              ->
               Miniml.Tunknown
             | Miniml.Tarr (a, b) ->
               Miniml.Tarr (erase_field_tvars a, erase_field_tvars b)
@@ -7648,6 +7670,32 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
               (fst (get_args_and_ret [] ft))
           | None -> []
         in
+        (* An erased argument still fills the slot of a parameter the field
+           declares at a live type: extraction dropped the {e value} -- [tok],
+           which carries no information -- not the position, and the method
+           was generated with the parameter still there.  Such an argument is
+           passed as the empty box its parameter's type asks for.  An argument
+           whose parameter is erased too simply goes away. *)
+        let value_args =
+          let is_erased = function MLdummy _ -> true | _ -> false in
+          let dropped = List.filter (fun a -> not (is_erased a)) args in
+          let doms =
+            match fld_ty_opt with
+            | Some ft -> fst (get_args_and_ret [] ft)
+            | None -> []
+          in
+          (* Only a domain list of the field's own arity says anything about
+             which argument stands where.  A method whose quantifier was
+             stripped back off has fewer domains than the call has arguments,
+             and pairing them would shift every position.  A higher-kinded
+             class passes its erased type arguments as template arguments
+             rather than values, so it keeps dropping them outright. *)
+          if hkt_class || List.length doms <> List.length args then dropped
+          else
+            List.filteri
+              (fun i a -> not (is_erased a) || not (isTdummy (List.nth doms i)))
+              args
+        in
         let call =
           (* The arguments live under the branch's binders, so the ML type
              environment must be pushed alongside [env'] for the erasure
@@ -7659,7 +7707,11 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
           let arg_exprs =
             List.mapi
               (fun j a ->
-                let e = gen_expr ~slot env' a in
+                let e =
+                  match a with
+                  | MLdummy _ -> Cpp_erasure.empty_box
+                  | _ -> gen_expr ~slot env' a
+                in
                 match List.nth_opt fld_param_tys j with
                 | Some (Miniml.Tapp _ as pt) when not is_typeclass ->
                   (* The dictionary's method is stored monomorphically, over

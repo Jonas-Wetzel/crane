@@ -241,6 +241,9 @@ let converting_ctor ty args =
     CPPbox (ty, inner)
   | _ -> CPPconverting_ctor (ty, args)
 
+(** [empty_box] -- see [cpp_erasure.mli]. *)
+let empty_box = converting_ctor Tany []
+
 (** [unbox ty e] -- see [cpp_erasure.mli]. *)
 let unbox ty e =
   match e with

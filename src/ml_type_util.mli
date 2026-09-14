@@ -32,6 +32,12 @@
       alias set accumulated while emitting declarations, and so is only
       meaningful during printing. *)
 
+(** [instance_type_args args] -- a typeclass's type arguments as both the
+    instance's signature and its call sites must spell them.  A type argument
+    extraction erased to [Tdummy] becomes [Tunknown]: the parameter standing
+    at it keeps its slot, at the erased type the concept also spells it. *)
+val instance_type_args : Miniml.ml_type list -> Miniml.ml_type list
+
 (** {2 Constructor name resolution} *)
 
 (** Struct name for the C++ representation of a constructor global reference. *)

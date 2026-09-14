@@ -25,6 +25,18 @@ let ctor_struct_name_of_ref ?(fallback_idx = 0) (c : GlobRef.t) : string =
     String.capitalize_ascii (Common.pp_global_name Type c)
   | _ -> ctor_fallback_name fallback_idx
 
+(** [instance_type_args args] -- a typeclass's type arguments as both the
+    instance's signature and its call sites must spell them.
+
+    Extraction erases a type that carries no information ([Inductive token :=
+    tok]) all the way to [Tdummy], and a parameter at such a type would then
+    disappear.  It may not: the class declares each field at an arity the
+    generated concept checks, so the parameter keeps its slot at the erased
+    type -- which is how the concept spells it for that instance too
+    ([C<ic, std::any>]). *)
+let instance_type_args (args : ml_type list) : ml_type list =
+  List.map (fun t -> if Mlutil.isTdummy t then Miniml.Tunknown else t) args
+
 (** Like {!ctor_struct_name_of_ref} but returns an [Id.t]. *)
 let ctor_struct_id_of_ref ?(fallback_idx = 0) (c : GlobRef.t) : Id.t =
   Id.of_string (ctor_struct_name_of_ref ~fallback_idx c)

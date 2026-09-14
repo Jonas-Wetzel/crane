@@ -19,13 +19,13 @@ concept C = requires {
 };
 
 struct ic {
-  static uint64_t m() { return UINT64_C(1); }
+  static uint64_t m(std::any) { return UINT64_C(1); }
 };
 
 static_assert(C<ic, std::any>);
 
 struct InstanceMethodIgnoresArg {
-  static inline const uint64_t run = [](T1 _sat0) { return ic::m(_sat0); };
+  static inline const uint64_t run = ic::m(std::any());
 };
 
 #endif // INCLUDED_INSTANCE_METHOD_IGNORES_ARG

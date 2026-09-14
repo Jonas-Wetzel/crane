@@ -144,17 +144,6 @@
   (deps functor_local_class_template_kw.t.exe)
   (action (run ./functor_local_class_template_kw.t.exe))))
 
-(subdir instance_method_ignores_arg
- (rule
-  (targets instance_method_ignores_arg.t.exe)
-  (deps InstanceMethodIgnoresArg.vo instance_method_ignores_arg.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} instance_method_ignores_arg.t.exe instance_method_ignores_arg.cpp instance_method_ignores_arg.t.cpp)))
- (rule
-  (alias runtest)
-  (deps instance_method_ignores_arg.t.exe)
-  (action (run ./instance_method_ignores_arg.t.exe))))
-
 (subdir multi_arg_function_value
  (rule
   (targets multi_arg_function_value.t.exe)

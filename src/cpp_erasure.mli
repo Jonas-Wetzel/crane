@@ -59,6 +59,13 @@ val erased_list_shape : cpp_type -> (Names.GlobRef.t * cpp_type) option
     once.  So boxing a box re-boxes what was inside it instead. *)
 val converting_ctor : cpp_type -> cpp_expr list -> cpp_expr
 
+(** [empty_box] is the value an erased argument is passed as: [std::any{}].
+
+    An argument extraction erased still occupies the slot of a parameter
+    declared at the erased type, and that slot is evaluated, so it cannot hold
+    the [CPPabort] a genuinely unreachable erased position gets. *)
+val empty_box : cpp_expr
+
 (** [unbox ty e] reads [e] back out of its box at type [ty].
 
     Two readings are no reading at all, and neither is built.  [any_cast] to

@@ -823,7 +823,7 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
                         t,
                       es )
                 | t -> t )
-              type_args
+              (Ml_type_util.instance_type_args type_args)
           in
           let subst_ty = Mlutil.type_subst_list subst_args field_ml_ty in
           (* The concept requires the field at the arity the class declared it
@@ -897,6 +897,38 @@ let gen_instance_struct (name : GlobRef.t) (body : ml_ast) (ty : ml_type) :
             | MLlam (_, ty, rest) ->
               (if Mlutil.isTdummy ty then 0 else 1) + nb_lams rest
             | _ -> 0
+          in
+          (* A binder whose type extraction erased away ([token], a
+             one-constructor inductive carrying no information) still occupies
+             a parameter slot: the class declares the field at an arity every
+             instance must meet, and the concept checks that arity.  Where the
+             body's leading binders line up one-for-one with the declared
+             arguments, the declaration's type wins over the body's erased
+             annotation, so the parameter survives instead of being dropped as
+             a proof binder would be. *)
+          let field_body =
+            let declared = fst (get_args_and_ret [] subst_ty) in
+            let rec leading = function MLlam (_, _, r) -> 1 + leading r | _ -> 0 in
+            if leading field_body <> List.length declared then field_body
+            else
+              let rec retype tys body =
+                match (tys, body) with
+                | ty :: rest, MLlam (id, bty, b) ->
+                  let erased_value =
+                    (* [Ktype] is an erased type abstraction -- the field's own
+                       [forall A], which stands at no declared argument.  Any
+                       other erased annotation is a value binder whose type
+                       carried no information. *)
+                    match bty with
+                    | Miniml.Tdummy Miniml.Ktype -> false
+                    | Miniml.Tdummy _ -> true
+                    | _ -> false
+                  in
+                  let bty = if erased_value && not (Mlutil.isTdummy ty) then ty else bty in
+                  MLlam (id, bty, retype rest b)
+                | _ -> body
+              in
+              retype declared field_body
           in
           let field_body =
             if nb_lams field_body = 0 && Table.get_ind_hkt_params class_ref = []
