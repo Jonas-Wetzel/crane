@@ -92,7 +92,7 @@ struct LiftedLambdaNested {
 
   static uint64_t depth(const t &x);
 
-  template <typename T1> static uint64_t _anon_outer(const T1, const t x) {
+  template <typename T1> static uint64_t _go_outer(const T1, const t x) {
     std::function<uint64_t(T1)> inner = [=](const T1 &) mutable {
       return depth(x);
     };
@@ -101,7 +101,7 @@ struct LiftedLambdaNested {
 
   static inline const uint64_t go = []() {
     t x = t::n(t::n(t::l()));
-    return (_anon_outer(UINT64_C(0), x) + _anon_outer(UINT64_C(1), x));
+    return (_go_outer(UINT64_C(0), x) + _go_outer(UINT64_C(1), x));
   }();
 };
 

@@ -171,23 +171,23 @@ public:
 };
 
 struct LocalFixTwoInst {
-  template <typename T1> static Nat _anon_len(const List<T1> l) {
+  template <typename T1> static Nat _run_len(const List<T1> l) {
     if (std::holds_alternative<typename List<T1>::Nil>(l.v())) {
       return Nat::o();
     } else {
       const auto &[a0, a1] = std::get<typename List<T1>::Cons>(l.v());
-      return Nat::s(_anon_len<T1>(*a1));
+      return Nat::s(_run_len<T1>(*a1));
     }
   }
 
   static inline const Nat run = []() {
-    return _anon_len(List<Nat>::cons(
-                         Nat::s(Nat::o()),
-                         List<Nat>::cons(
-                             Nat::s(Nat::s(Nat::o())),
-                             List<Nat>::cons(Nat::s(Nat::s(Nat::s(Nat::o()))),
-                                             List<Nat>::nil()))))
-        .add(_anon_len(List<bool>::cons(
+    return _run_len(List<Nat>::cons(
+                        Nat::s(Nat::o()),
+                        List<Nat>::cons(
+                            Nat::s(Nat::s(Nat::o())),
+                            List<Nat>::cons(Nat::s(Nat::s(Nat::s(Nat::o()))),
+                                            List<Nat>::nil()))))
+        .add(_run_len(List<bool>::cons(
             true, List<bool>::cons(false, List<bool>::nil()))));
   }();
 };

@@ -133,19 +133,18 @@ public:
 /// site was translated first.  The other two uses then have no matching
 /// overload.
 struct LetPolymorphicFun {
-  template <typename T1> static uint64_t _anon_f(const T1 x, const List<T1> l) {
+  template <typename T1> static uint64_t _run_f(const T1 x, const List<T1> l) {
     return List<T1>::cons(x, l).length();
   }
 
   static inline const uint64_t run = []() {
-    return (
-        (_anon_f(UINT64_C(1),
-                 List<uint64_t>::cons(
-                     UINT64_C(2), List<uint64_t>::cons(
-                                      UINT64_C(3), List<uint64_t>::nil()))) +
-         _anon_f(true, List<bool>::nil())) +
-        _anon_f(std::function([](uint64_t x) { return (x + 1); }),
-                List<std::function<uint64_t(uint64_t)>>::nil()));
+    return ((_run_f(UINT64_C(1),
+                    List<uint64_t>::cons(
+                        UINT64_C(2), List<uint64_t>::cons(
+                                         UINT64_C(3), List<uint64_t>::nil()))) +
+             _run_f(true, List<bool>::nil())) +
+            _run_f(std::function([](uint64_t x) { return (x + 1); }),
+                   List<std::function<uint64_t(uint64_t)>>::nil()));
   }();
 };
 

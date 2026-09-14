@@ -1984,6 +1984,27 @@ let build_extended_tvar_names sig_indices sig_names body_tvars =
   else
     sig_names
 
+(** The reference under which an inner fixpoint named [fix_name], lifted out of
+    the declaration currently being generated, is emitted.
+
+    The name must be unique per lifted helper: [Cpp.dedup_lifted_decls] keys
+    lifted declarations by name alone, so two helpers sharing a name collapse
+    into a single emitted definition and at least one call site is left
+    dangling.  The enclosing declaration supplies the disambiguator —
+    [current_outer_function_name] while a function body is being generated, and
+    otherwise the declaration currently being generated, which is set for value
+    definitions too. *)
+let lifted_fix_ref (fix_name : Id.t) : GlobRef.t =
+  let outer_name =
+    match (!tctx).current_outer_function_name with
+    | Some n -> n
+    | None -> (
+      match !Table.current_decl_ref with
+      | Some r -> Common.pp_global_name Term r
+      | None -> "anon" )
+  in
+  GlobRef.VarRef (Id.of_string ("_" ^ outer_name ^ "_" ^ Id.to_string fix_name))
+
 (* Walk an ML AST and collect source-order parameter indices that are NOT
    simply forwarded unchanged at recursive call sites.  [is_self_call depth f]
    returns true when the head [f] of an application is a self-recursive
@@ -12085,13 +12106,7 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
       let all_temps = List.map (fun id -> (TTtypename, id)) all_tvar_names in
       (* Generate the lifted function name *)
       let fix_name = fst ids.(x) in
-      let outer_name =
-        match (!tctx).current_outer_function_name with
-        | Some n -> n
-        | None -> "anon"
-      in
-      let lifted_name_str = "_" ^ outer_name ^ "_" ^ Id.to_string fix_name in
-      let lifted_ref = GlobRef.VarRef (Id.of_string lifted_name_str) in
+      let lifted_ref = lifted_fix_ref fix_name in
       (* Generate the fixpoint body using gen_fix, under the lifted function's
          own tvar scope, passing all mutual fixpoint names *)
       let all_fix_ids_list = Array.to_list ids in
@@ -12531,13 +12546,7 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
         in
 
         (* 3. Generate the lifted function name *)
-        let outer_name =
-          match (!tctx).current_outer_function_name with
-          | Some n -> n
-          | None -> "anon"
-        in
-        let lifted_name_str = "_" ^ outer_name ^ "_" ^ Id.to_string x' in
-        let lifted_ref = GlobRef.VarRef (Id.of_string lifted_name_str) in
+        let lifted_ref = lifted_fix_ref x' in
 
         (* 4. Substitution helper for call sites: replace CPPfun_call(CPPvar x',
            args) with CPPfun_call(CPPglob(lifted_ref, []), free_var_cpps @
@@ -12572,9 +12581,6 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
             (free_args : cpp_expr list)
             (e : cpp_expr) =
           let sub = subst_lifted_call_expr target lifted free_args in
-          let sub_lambda =
-            map_lambda (subst_lifted_call_stmt target lifted free_args) Fun.id
-          in
           match e with
           | CPPfun_call (_, CPPvar id, args) when Id.equal id target ->
             (* The lifted template's parameters come from the lambda, so its
@@ -12614,27 +12620,6 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
                               ( call_opaque, mk_cppglob lifted [],
                                 of_reversed wrapper_call_args ) ) ) ];
                   cl_by_value = true }
-          | CPPfun_call (res, f, args) ->
-            CPPfun_call (res, sub f, map_args sub args)
-          | CPPderef e' -> CPPderef (sub e')
-          | CPPmove e' -> CPPmove (sub e')
-          | CPPlambda l -> CPPlambda (sub_lambda l)
-          | CPPstructmk (id', tys, args) ->
-            CPPstructmk (id', tys, List.map sub args)
-          | CPPstruct (id', tys, args) -> CPPstruct (id', tys, List.map sub args)
-          | CPPget (e', id') -> CPPget (sub e', id')
-          | CPPget' (e', id') -> CPPget' (sub e', id')
-          | CPPnamespace (id', e') -> CPPnamespace (id', sub e')
-          | CPPparray (args, e') -> CPPparray (Array.map sub args, sub e')
-          | CPPaccess_call (Aarrow, obj, meth, args) ->
-            CPPaccess_call (Aarrow, sub obj, meth, List.map sub args)
-          | CPPaccess (a, e', mid) -> CPPaccess (a, sub e', mid)
-          | CPPforward (ty, e') -> CPPforward (ty, sub e')
-          | CPPnew (ty, args) -> CPPnew (ty, List.map sub args)
-          | CPPshared_ptr_ctor (ty, e') -> CPPshared_ptr_ctor (ty, sub e')
-          | CPPstruct_id (sid, tys, args) ->
-            CPPstruct_id (sid, tys, List.map sub args)
-          | CPPscope (e', qid, []) -> CPPscope (sub e', qid, [])
           | CPPany_cast (_, CPPfun_call (_, CPPvar id, args))
             when Id.equal id target ->
             (* The any_cast wraps a direct call to the variable being lifted.
@@ -12645,34 +12630,21 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
                 mk_cppglob lifted [],
                 of_reversed (free_args @ List.map sub (to_reversed args)) )
           | CPPany_cast (ty, e') -> Cpp_erasure.unbox ty (sub e')
-          | _ -> e
+          | _ ->
+            (* Every other form is a plain structural descent.  Spelling the
+               cases out by hand is what let uses of [target] under an [if] or
+               a [switch] escape rewriting. *)
+            map_expr sub (subst_lifted_call_stmt target lifted free_args)
+              Fun.id e
         and subst_lifted_call_stmt
             (target : Id.t)
             (lifted : GlobRef.t)
             (free_args : cpp_expr list)
             (s : cpp_stmt) =
-          match s with
-          | Sreturn (Some e) ->
-            Sreturn (Some (subst_lifted_call_expr target lifted free_args e))
-          | Sreturn None -> Sreturn None
-          | Sasgn (id, ty, e) ->
-            Sasgn (id, ty, subst_lifted_call_expr target lifted free_args e)
-          | Sexpr e -> Sexpr (subst_lifted_call_expr target lifted free_args e)
-          | Scustom_case (ty, e, tys, brs, str) ->
-            Scustom_case
-              ( ty,
-                subst_lifted_call_expr target lifted free_args e,
-                tys,
-                List.map
-                  (fun (args, ty, stmts) ->
-                    ( args,
-                      ty,
-                      List.map
-                        (subst_lifted_call_stmt target lifted free_args)
-                        stmts ) )
-                  brs,
-                str )
-          | _ -> s
+          map_stmt
+            (subst_lifted_call_expr target lifted free_args)
+            (subst_lifted_call_stmt target lifted free_args)
+            Fun.id s
         in
 
         (* 6. Compile the lambda body under the extended type-variable
@@ -13149,13 +13121,7 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
         build_extended_tvar_names fix_tvar_indices all_tvar_names all_body_tvars
       in
       let fix_name = fst ids.(x) in
-      let outer_name =
-        match (!tctx).current_outer_function_name with
-        | Some n -> n
-        | None -> "anon"
-      in
-      let lifted_name_str = "_" ^ outer_name ^ "_" ^ Id.to_string fix_name in
-      let lifted_ref = GlobRef.VarRef (Id.of_string lifted_name_str) in
+      let lifted_ref = lifted_fix_ref fix_name in
       (* Compile under the lifted function's extended tvar scope, which covers
          both signature and body Tvar indices. *)
       let all_fix_ids_list = Array.to_list ids in
