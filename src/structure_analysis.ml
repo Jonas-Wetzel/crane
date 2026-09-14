@@ -35,6 +35,7 @@ type t = {
   collision_wrappers : (ModPath.t * string) list;
   functor_app_sources : (ModPath.t * ModPath.t) list;
   eponymous_records : GlobRef.t list;
+  concept_renames : (GlobRef.t * string) list;
 }
 
 (** {2 Functor application sources} *)
@@ -731,6 +732,48 @@ let collect_eponymous_records (s : ml_structure) : GlobRef.t list =
   List.iter (fun (mp, sel) -> collect (string_of_modfile mp) sel) s;
   List.rev !acc
 
+(** Decide the name every type class's concept is emitted under, for the
+    classes whose own name does not settle it.
+
+    A concept is declared at C++ file scope whatever module the class was
+    declared in, so two classes called [C] in different modules would be one
+    redefinition of the other.  Where a name is shared, each of its classes is
+    qualified with the module that declares it -- all of them, so that which
+    name a class gets does not depend on the order they were rendered in. *)
+let collect_concept_renames (s : ml_structure) : (GlobRef.t * string) list =
+  let classes = ref [] in
+  let rec collect sel =
+    List.iter
+      (fun (_l, se) ->
+        match se with
+        | SEdecl (Dind (kn, ind)) ->
+          ( match ind.ind_kind with
+          | TypeClass _ ->
+            Array.iteri
+              (fun i _p -> classes := GlobRef.IndRef (kn, i) :: !classes)
+              ind.ind_packets
+          | _ -> () )
+        | SEmodule {ml_mod_expr = MEstruct (_mp, inner_sel); _} ->
+          collect inner_sel
+        | _ -> () )
+      sel
+  in
+  List.iter (fun (_mp, sel) -> collect sel) s;
+  let base r = Common.last_component (Common.pp_global_name Type r) in
+  let counts = Hashtbl.create 8 in
+  List.iter
+    (fun r ->
+      let b = base r in
+      Hashtbl.replace counts b (1 + Option.default 0 (Hashtbl.find_opt counts b)) )
+    !classes;
+  List.filter_map
+    (fun r ->
+      let b = base r in
+      if Option.default 0 (Hashtbl.find_opt counts b) > 1 then
+        Some (r, Common.emitted_module_name (modpath_of_r r) ^ "_" ^ b)
+      else None )
+    (List.rev !classes)
+
 let analyze (reg : Method_registry.t) (s : ml_structure) : t =
   (* 1. Register enum inductives (side-effect: populates Table). *)
   List.iter (fun (_mp, sel) -> register_enum_inductives sel) s;
@@ -777,6 +820,7 @@ let analyze (reg : Method_registry.t) (s : ml_structure) : t =
   let collision_wrappers = collect_collision_wrappers names sorted_modules in
   (* 6. Collect the eponymous records, for the same reason. *)
   let eponymous_records = collect_eponymous_records s in
+  let concept_renames = collect_concept_renames s in
   (* 7. Collect the alias and functor-application targets, likewise. *)
   let functor_app_sources = collect_functor_app_sources s in
   { sorted_modules;
@@ -784,4 +828,5 @@ let analyze (reg : Method_registry.t) (s : ml_structure) : t =
     global_scope_enums;
     collision_wrappers;
     functor_app_sources;
-    eponymous_records }
+    eponymous_records;
+    concept_renames }

@@ -290,6 +290,13 @@ val wrapper_module_table : (Names.module_path, string) Hashtbl.t
     [reset_cpp_state]. *)
 val collision_wrapper_table : (Names.module_path, unit) Hashtbl.t
 
+(** The C++ concept name of each type class whose own name does not settle it,
+    because another module declares a class of the same name and a concept is
+    declared at file scope. Populated from
+    {!Structure_analysis.collect_concept_renames}; cleared by
+    [reset_cpp_state]. *)
+val concept_name_table : (Names.GlobRef.t, string) Hashtbl.t
+
 (** Enum inductives rendered at global scope rather than inside a struct, used
     to avoid spurious struct qualification in [.cpp] files. Cleared by
     [reset_cpp_state]. *)

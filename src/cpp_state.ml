@@ -557,6 +557,13 @@ let wrapper_module_table : (ModPath.t, string) Hashtbl.t = Hashtbl.create 16
     strips the child qualifier. *)
 let collision_wrapper_table : (ModPath.t, unit) Hashtbl.t = Hashtbl.create 16
 
+(** The name each type class's concept is emitted under, for the classes whose
+    own name does not settle it: a concept is declared at file scope, so two
+    classes called [C] in different modules are told apart by their module's
+    name.  Decided by {!Structure_analysis.collect_concept_renames} before any
+    rendering, and read by {!Cpp_names.concept_name_of_ref}. *)
+let concept_name_table : (GlobRef.t, string) Hashtbl.t = Hashtbl.create 8
+
 (** Global-scope enum table: tracks enum inductives that were rendered at global
     scope (not inside any struct). Used to avoid incorrect struct qualification
     in .cpp files. *)
@@ -851,6 +858,7 @@ let () =
   tbl "eponymous_record_by_modpath" eponymous_record_by_modpath;
   tbl "wrapper_module_table" wrapper_module_table;
   tbl "collision_wrapper_table" collision_wrapper_table;
+  tbl "concept_name_table" concept_name_table;
   tbl "global_scope_enum_table" global_scope_enum_table;
   tbl "global_scope_type_alias_table" global_scope_type_alias_table;
   tbl "pending_wrapper_decls" pending_wrapper_decls;
@@ -888,6 +896,7 @@ let reset_cpp_state () =
   Hashtbl.clear eponymous_record_by_modpath;
   Hashtbl.clear wrapper_module_table;
   Hashtbl.clear collision_wrapper_table;
+  Hashtbl.clear concept_name_table;
   Hashtbl.clear global_scope_enum_table;
   Hashtbl.clear global_scope_type_alias_table;
   Hashtbl.clear pending_wrapper_decls;

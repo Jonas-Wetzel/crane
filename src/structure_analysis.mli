@@ -123,6 +123,14 @@ type t = {
           copies this set when it is built, so a record discovered later --
           while rendering a module the resolver has already answered for --
           would never reach it. *)
+  concept_renames : (GlobRef.t * string) list;
+      (** [(class, concept_name)] for every type class whose C++ concept name
+          is not simply its own name.  A concept is declared at file scope, so
+          classes that share a name are each qualified with their module's.
+
+          Here for the same reason as {!collision_wrappers}: the name is read
+          at every use of the concept, including ones rendered before the
+          class itself. *)
 }
 
 (** Perform all structure analysis in a single pass.

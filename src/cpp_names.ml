@@ -60,7 +60,9 @@ let pp_global k r = str (str_global k r)
     enclosing struct and carries no qualifier -- neither at its declaration
     nor at its uses. *)
 let concept_name_of_ref r =
-  Common.last_component (Common.pp_global_name Type r)
+  match Hashtbl.find_opt Cpp_state.concept_name_table r with
+  | Some name -> name
+  | None -> Common.last_component (Common.pp_global_name Type r)
 
 (** {!concept_name_of_ref} as a [Pp.t]. *)
 let pp_concept_name_of_ref r = str (concept_name_of_ref r)

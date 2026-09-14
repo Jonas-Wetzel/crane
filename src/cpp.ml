@@ -1788,6 +1788,9 @@ let prepare_structure s =
     analysis.collision_wrappers;
   List.iter register_eponymous_record analysis.eponymous_records;
   List.iter
+    (fun (r, name) -> Hashtbl.replace concept_name_table r name)
+    analysis.concept_renames;
+  List.iter
     (fun (mp, src) -> Hashtbl.replace functor_app_sources mp src)
     analysis.functor_app_sources;
   List.iter
