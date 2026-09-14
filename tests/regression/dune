@@ -216,6 +216,17 @@
   (deps module_named_like_generated_type.t.exe)
   (action (run ./module_named_like_generated_type.t.exe))))
 
+(subdir multi_arg_function_value
+ (rule
+  (targets multi_arg_function_value.t.exe)
+  (deps MultiArgFunctionValue.vo multi_arg_function_value.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} multi_arg_function_value.t.exe multi_arg_function_value.cpp multi_arg_function_value.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps multi_arg_function_value.t.exe)
+  (action (run ./multi_arg_function_value.t.exe))))
+
 (subdir phantom_type_arg_never_emitted
  (rule
   (targets phantom_type_arg_never_emitted.t.exe)

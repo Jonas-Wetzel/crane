@@ -144,14 +144,3 @@
   (deps functor_local_class_template_kw.t.exe)
   (action (run ./functor_local_class_template_kw.t.exe))))
 
-(subdir multi_arg_function_value
- (rule
-  (targets multi_arg_function_value.t.exe)
-  (deps MultiArgFunctionValue.vo multi_arg_function_value.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} multi_arg_function_value.t.exe multi_arg_function_value.cpp multi_arg_function_value.t.cpp)))
- (rule
-  (alias runtest)
-  (deps multi_arg_function_value.t.exe)
-  (action (run ./multi_arg_function_value.t.exe))))
-

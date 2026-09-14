@@ -13,15 +13,13 @@
 /// currying convention for stored functions, not function storage itself.
 struct MultiArgFunctionValue {
   static inline const std::optional<std::function<uint64_t(uint64_t, uint64_t)>>
-      o = std::make_optional<
-          std::function<std::function<uint64_t(uint64_t)>(uint64_t)>>(
+      o = std::make_optional<std::function<uint64_t(uint64_t, uint64_t)>>(
           [](uint64_t _x0, uint64_t _x1) -> uint64_t { return (_x0 + _x1); });
   static inline const std::optional<std::function<uint64_t(uint64_t)>> partial =
       []() {
         return []() -> std::optional<std::function<uint64_t(uint64_t)>> {
           if (o.has_value()) {
-            const std::function<std::function<uint64_t(uint64_t)>(uint64_t)>
-                &f = *o;
+            const std::function<uint64_t(uint64_t, uint64_t)> &f = *o;
             return std::make_optional<std::function<uint64_t(uint64_t)>>(
                 [=](uint64_t _pa0) mutable { return f(UINT64_C(1), _pa0); });
           } else {

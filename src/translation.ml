@@ -4218,8 +4218,12 @@ and gen_expr_custom_cons ?expected_ty ?(slot = empty_slot) env (ty : ml_type)
       in
       (* Step 2: Convert ML types to C++ types.  The enclosing type-variable
          names matter: inside a member template a [Tvar] is one of the
-         method's own parameters ([_A0]), not an anonymous [T2]. *)
-      let temps = template_params_of_ml env tys in
+         method's own parameters ([_A0]), not an anonymous [T2].  The
+         arguments instantiate an {i inductive's} parameters, so a stored
+         function type keeps the flat arity its declaration is written at
+         ([~curry:false]); currying here would make the instantiation
+         disagree with the type the declaration spells. *)
+      let temps = template_params_of_ml ~curry:false env tys in
       let temps = filter_erased_type_args temps in
       (* Step 2b: Recover type args from the return type when unresolved metas
          caused all type args to be erased.  This happens for nullary custom
@@ -11325,7 +11329,7 @@ and gen_custom_cpp_case env k (typ : ml_type) t pv =
   let temps =
     match ml_typ with
     | Tglob (_, tys, _) ->
-      let raw = template_params_of_ml env tys in
+      let raw = template_params_of_ml ~curry:false env tys in
       List.map (fun ty ->
         if fix_a_fired || has_tany_in_type ty then Tauto else ty) raw
     | _ -> []
