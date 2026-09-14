@@ -4,6 +4,7 @@
 #include "crane_fn.h"
 #include "small_vector.h"
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -104,7 +105,7 @@ struct IfBranchFunctionParams {
     requires std::is_invocable_r_v<Nat, F1 &, Nat &> &&
              std::is_invocable_r_v<Nat, F2 &, Nat &>
   static Nat h(Bool0 b, F1 &&f, F2 &&g, Nat x0_) {
-    return [=]() mutable {
+    return [=]() mutable -> std::function<Nat(Nat)> {
       switch (b) {
       case Bool0::TRUE_: {
         return f;

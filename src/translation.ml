@@ -3062,13 +3062,28 @@ and iife_void_return env typ pv =
     the branch as dead.
 
     The question is asked of the generated statements, not of the ML terms: a
-    branch spells a closure whether it was written as a lambda or arose from a
-    partial application, and only the C++ says which. *)
+    branch spells a closure whether it was written as a lambda, arose from a
+    partial application, or is a function-typed binder handed straight back,
+    and only the C++ says which.  A binder counts because a function-typed
+    parameter is a deduced template parameter of its own -- [f] and [g] of the
+    same Rocq type are still two C++ types, and two branches returning one
+    each deduce nothing. *)
 and iife_closure_return env typ pv stmts =
   let found = ref false in
+  let rec is_arrow = function
+    | Miniml.Tarr _ -> true
+    | Miniml.Tmeta {contents = Some t} -> is_arrow t
+    | _ -> false
+  in
+  let binder_is_fun id =
+    match List.assoc_opt id (!tctx).env_types with
+    | Some ty -> is_arrow ty
+    | None -> false
+  in
   let scan_expr e =
     match e with
     | CPPlambda _ -> found := true
+    | CPPvar id when binder_is_fun id -> found := true
     | CPPglob (r, _, _) when Table.is_tt_constructor r -> found := true
     | _ -> ()
   in

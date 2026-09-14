@@ -144,17 +144,6 @@
   (deps functor_local_class_template_kw.t.exe)
   (action (run ./functor_local_class_template_kw.t.exe))))
 
-(subdir if_branch_function_params
- (rule
-  (targets if_branch_function_params.t.exe)
-  (deps IfBranchFunctionParams.vo if_branch_function_params.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} if_branch_function_params.t.exe if_branch_function_params.cpp if_branch_function_params.t.cpp)))
- (rule
-  (alias runtest)
-  (deps if_branch_function_params.t.exe)
-  (action (run ./if_branch_function_params.t.exe))))
-
 (subdir instance_method_ignores_arg
  (rule
   (targets instance_method_ignores_arg.t.exe)

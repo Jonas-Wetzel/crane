@@ -161,6 +161,17 @@
   (deps hkt_single_ctor_instance_body.t.exe)
   (action (run ./hkt_single_ctor_instance_body.t.exe))))
 
+(subdir if_branch_function_params
+ (rule
+  (targets if_branch_function_params.t.exe)
+  (deps IfBranchFunctionParams.vo if_branch_function_params.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} if_branch_function_params.t.exe if_branch_function_params.cpp if_branch_function_params.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps if_branch_function_params.t.exe)
+  (action (run ./if_branch_function_params.t.exe))))
+
 (subdir let_polymorphic_lift_rename
  (rule
   (targets let_polymorphic_lift_rename.t.exe)
