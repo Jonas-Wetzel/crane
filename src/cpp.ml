@@ -1971,9 +1971,19 @@ let do_struct_with_decl_tracking ~is_header f s =
             sel
         in
         if has_child_collision then (
+          (* The wrapper's name was chosen with the collision that forced it in
+             view, by {!Structure_analysis}; each wrapped child records it. *)
           let parent_name =
-            Table.escape_reserved_struct_name
-              (String.capitalize_ascii (string_of_modfile mp))
+            List.find_map
+              (fun (l, se) ->
+                match se with
+                | SEmodule _ when is_colliding_child l se ->
+                  Hashtbl.find_opt wrapper_module_table (MPdot (mp, l))
+                | _ -> None )
+              sel
+            |> Option.default
+                 (Table.escape_reserved_struct_name
+                    (String.capitalize_ascii (string_of_modfile mp)))
           in
           if is_header then
             let non_colliding_pp, colliding_pp =

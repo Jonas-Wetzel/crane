@@ -33,13 +33,13 @@ struct Option {
   }
 
   static inline const uint64_t test_some =
-      Option::get_or_default(Option::some_val, UINT64_C(0));
+      get_or_default(some_val, UINT64_C(0));
   static inline const uint64_t test_none =
-      Option::get_or_default(Option::none_val, UINT64_C(0));
+      get_or_default(none_val, UINT64_C(0));
   static inline const std::optional<uint64_t> test_pred_zero =
-      Option::safe_pred(UINT64_C(0));
+      safe_pred(UINT64_C(0));
   static inline const std::optional<uint64_t> test_pred_five =
-      Option::safe_pred(UINT64_C(5));
+      safe_pred(UINT64_C(5));
 };
 
 #endif // INCLUDED_OPTION

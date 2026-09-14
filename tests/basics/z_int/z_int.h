@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+struct Z {};
+
 struct ZIntTest {
   static int64_t add_test(int64_t x0_, int64_t x1_);
   static int64_t mul_test(int64_t x0_, int64_t x1_);

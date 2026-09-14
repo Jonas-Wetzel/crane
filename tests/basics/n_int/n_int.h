@@ -7,6 +7,8 @@ struct Pos {
   static unsigned int add_carry(unsigned int x, unsigned int y);
 };
 
+struct N {};
+
 struct NIntTest {
   static unsigned int add_test(unsigned int x0_, unsigned int x1_);
   static unsigned int mul_test(unsigned int x0_, unsigned int x1_);

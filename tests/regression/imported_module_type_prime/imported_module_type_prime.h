@@ -11,6 +11,8 @@ concept TotalLeBool_ = requires {
   } -> std::same_as<bool>;
 };
 
+struct Nat {};
+
 /// A module type declared in another library is re-emitted as a concept, but
 /// its name is copied verbatim instead of being sanitised, so the apostrophe in
 /// TotalLeBool' reaches the C++ output.  The reference in the functor's

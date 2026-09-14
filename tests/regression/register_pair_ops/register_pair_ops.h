@@ -131,6 +131,8 @@ public:
   }
 };
 
+struct Nat {};
+
 struct ListDef {
   static List<uint64_t> seq(uint64_t start, uint64_t len);
   template <typename T1>

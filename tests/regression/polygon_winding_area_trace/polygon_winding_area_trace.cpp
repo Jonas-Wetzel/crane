@@ -1,6 +1,6 @@
 #include "polygon_winding_area_trace.h"
 
-int64_t BinInt::pow_pos(int64_t z, unsigned int x0_) {
+int64_t Z::pow_pos(int64_t z, unsigned int x0_) {
   return Pos::template iter<int64_t>(
       [=](int64_t _x0) mutable -> int64_t {
         return static_cast<int64_t>(static_cast<uint64_t>(z) *
@@ -88,8 +88,8 @@ Real PolygonWindingAreaTraceCase::spherical_cosine_arg(Real ca, Real cb,
             (std::move(num) /
              r_max(r_abs(std::move(denom)),
                    (Real::from_z(INT64_C(1)) /
-                    Real::from_z(BinInt::pow_pos(
-                        INT64_C(10), (2u * (2u * (2u * 1u) + 1u)))))))));
+                    Real::from_z(Z::pow_pos(INT64_C(10),
+                                            (2u * (2u * (2u * 1u) + 1u)))))))));
 }
 
 Real PolygonWindingAreaTraceCase::law_of_cosines_arg(Real da, Real db,

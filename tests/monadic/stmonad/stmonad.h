@@ -189,6 +189,8 @@ public:
   }
 };
 
+struct Nat {};
+
 template <typename Err> struct ExceptE {
   // DATA
   Err a0;

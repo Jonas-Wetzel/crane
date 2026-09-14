@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+struct Z {};
+
 struct ZArithOverflow {
   /// Compute 3,100,000,000 via nat -> Z conversion.
   /// 3,100,000,000 fits in unsigned int (< 2^32) and int64_t.

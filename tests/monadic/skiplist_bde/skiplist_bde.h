@@ -26,6 +26,7 @@ concept convertible_to = bsl::is_convertible<From, To>::value;
 template <class T, class U>
 concept same_as = bsl::is_same<T, U>::value && bsl::is_same<U, T>::value;
 
+struct Nat {};
 template <typename K, typename V> struct SkipList {
   bsl::shared_ptr<SkipNode<K, V>> slHead;
   unsigned int slMaxLevel;

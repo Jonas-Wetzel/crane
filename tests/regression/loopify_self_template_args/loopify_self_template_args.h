@@ -143,7 +143,7 @@ struct List {
                                const List::list<T1> &l);
 };
 
-struct PeanoNat {
+struct Nat {
   static bool eq_dec(uint64_t n, uint64_t m);
 };
 

@@ -146,9 +146,14 @@ let collect_inductive_names (s : ml_structure) : (string * ModPath.t) list =
           Array.iteri
             (fun i _p ->
               let ind_ref = GlobRef.IndRef (kn, i) in
-              let ind_name = Common.pp_global_name Type ind_ref in
-              let ind_name_cap = String.capitalize_ascii ind_name in
-              acc := (ind_name_cap, ind_mp) :: !acc )
+              (* A custom-extracted inductive is spelled as the C++ type it was
+                 mapped to and never declared, so its Rocq name is not taken:
+                 [nat] mapped to [uint64_t] must not push a module called [Nat]
+                 into a collision wrapper. *)
+              if not (Table.is_custom ind_ref) then
+                let ind_name = Common.pp_global_name Type ind_ref in
+                let ind_name_cap = String.capitalize_ascii ind_name in
+                acc := (ind_name_cap, ind_mp) :: !acc )
             ind.ind_packets
         | SEmodule m ->
           ( match m.ml_mod_expr with
@@ -640,9 +645,27 @@ let collect_collision_wrappers
             sel
         in
         if colliding <> [] then begin
-          let parent_name =
+          (* The wrapper is a new struct at file scope, named after the file.
+             A file whose module is named after it -- the usual shape, one
+             module per file -- already emits a struct under that name, and the
+             two would collide in turn; the wrapper is the incidental one, so
+             it is the side that takes the suffix. *)
+          let base =
             Table.escape_reserved_struct_name
               (String.capitalize_ascii (string_of_modfile mp))
+          in
+          let taken_by_sibling =
+            List.exists
+              (fun (l, se) ->
+                match se with
+                | SEmodule _ ->
+                  String.equal base (Common.emitted_module_name (MPdot (mp, l)))
+                | _ -> false )
+              sel
+          in
+          let parent_name =
+            if taken_by_sibling || Hashtbl.mem names base then base ^ "_Mod"
+            else base
           in
           let register_decl_modpaths inner_sel =
             List.iter

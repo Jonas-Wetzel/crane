@@ -129,6 +129,8 @@ public:
   }
 };
 
+struct Nat {};
+
 struct HistoricalEventSafetyTraceCase {
   struct State {
     uint64_t reservoir_level_cm;

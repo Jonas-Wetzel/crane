@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <utility>
 
+struct Z {};
+
 struct ZDivMin {
   /// Build INT64_MIN = -9223372036854775808 via Z.opp(Z.of_nat ...)
   static inline const int64_t neg_max = static_cast<int64_t>(

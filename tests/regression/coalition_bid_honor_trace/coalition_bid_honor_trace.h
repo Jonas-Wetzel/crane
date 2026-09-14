@@ -303,6 +303,8 @@ public:
   }
 };
 
+struct Nat {};
+
 struct Positive {
   // TYPES
   struct XI {

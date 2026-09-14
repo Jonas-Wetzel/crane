@@ -11,7 +11,7 @@
 #include <utility>
 #include <variant>
 
-struct PeanoNat {
+struct Nat {
   static bool even(uint64_t n);
   static uint64_t div2(uint64_t n);
 };
@@ -501,7 +501,7 @@ struct Equations {
   static uint64_t collatz_steps_clause_3(uint64_t n, bool refine,
                                          F2 &&collatz_steps0) {
     if (refine) {
-      return (collatz_steps0(PeanoNat::div2(n)) + 1);
+      return (collatz_steps0(Nat::div2(n)) + 1);
     } else {
       return (collatz_steps0(((UINT64_C(3) * n) + UINT64_C(1))) + 1);
     }
@@ -518,7 +518,7 @@ struct Equations {
         return UINT64_C(0);
       } else {
         uint64_t n1 = n0 - 1;
-        return collatz_steps_clause_3(n1, PeanoNat::even(((n1 + 1) + 1)),
+        return collatz_steps_clause_3(n1, Nat::even(((n1 + 1) + 1)),
                                       collatz_steps0);
       }
     }
@@ -767,10 +767,9 @@ struct Equations {
             typename collatz_steps_graph::Collatz_steps_graph_refinement_3>(
             c.v());
         return f1(n0, *hind0,
-                  _self_f5(_self_f4, _self_f5, n0,
-                           PeanoNat::even(((n0 + 1) + 1)),
+                  _self_f5(_self_f4, _self_f5, n0, Nat::even(((n0 + 1) + 1)),
                            collatz_steps_unfold_clause_3(
-                               n0, PeanoNat::even(((n0 + 1) + 1))),
+                               n0, Nat::even(((n0 + 1) + 1))),
                            *hind0));
       }
     };
@@ -783,8 +782,8 @@ struct Equations {
             std::get<typename collatz_steps_clause_3_graph::
                          Collatz_steps_clause_3_graph_equation_1>(c.v());
         return f2(n0, *hind0,
-                  _self_f4(_self_f4, _self_f5, PeanoNat::div2(n0),
-                           collatz_steps(PeanoNat::div2(n0)), *hind0));
+                  _self_f4(_self_f4, _self_f5, Nat::div2(n0),
+                           collatz_steps(Nat::div2(n0)), *hind0));
       } else {
         const auto &[n0, hind0] =
             std::get<typename collatz_steps_clause_3_graph::
@@ -833,10 +832,9 @@ struct Equations {
             typename collatz_steps_graph::Collatz_steps_graph_refinement_3>(
             c.v());
         return f1(n0, *hind0,
-                  _self_f5(_self_f4, _self_f5, n0,
-                           PeanoNat::even(((n0 + 1) + 1)),
+                  _self_f5(_self_f4, _self_f5, n0, Nat::even(((n0 + 1) + 1)),
                            collatz_steps_unfold_clause_3(
-                               n0, PeanoNat::even(((n0 + 1) + 1))),
+                               n0, Nat::even(((n0 + 1) + 1))),
                            *hind0));
       }
     };
@@ -849,8 +847,8 @@ struct Equations {
             std::get<typename collatz_steps_clause_3_graph::
                          Collatz_steps_clause_3_graph_equation_1>(c.v());
         return f2(n0, *hind0,
-                  _self_f4(_self_f4, _self_f5, PeanoNat::div2(n0),
-                           collatz_steps(PeanoNat::div2(n0)), *hind0));
+                  _self_f4(_self_f4, _self_f5, Nat::div2(n0),
+                           collatz_steps(Nat::div2(n0)), *hind0));
       } else {
         const auto &[n0, hind0] =
             std::get<typename collatz_steps_clause_3_graph::

@@ -336,6 +336,8 @@ template <typename A, typename P> struct SigT {
   static SigT<A, P> existt(A x, P a1) { return {std::move(x), std::move(a1)}; }
 };
 
+struct Nat {};
+
 template <typename A> struct T0 {
   // TYPES
   struct Nil {};

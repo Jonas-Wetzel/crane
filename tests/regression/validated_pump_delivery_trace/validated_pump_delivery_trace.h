@@ -187,6 +187,8 @@ public:
   }
 };
 
+struct Nat {};
+
 struct ValidatedPumpDeliveryTraceCase {
   struct Mg_dL {
     uint64_t mg_dL_val;

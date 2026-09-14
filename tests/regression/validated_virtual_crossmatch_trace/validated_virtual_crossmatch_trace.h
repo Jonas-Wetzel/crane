@@ -253,7 +253,7 @@ public:
   }
 };
 
-struct PeanoNat {
+struct Nat {
   static bool eq_dec(uint64_t n, uint64_t m);
 };
 

@@ -90,6 +90,8 @@ public:
   const variant_t &v() const { return v_; }
 };
 
+struct Nat {};
+
 struct EtaMatchReturnsFun {
   static inline const List<
       std::pair<uint64_t, std::function<uint64_t(uint64_t)>>>

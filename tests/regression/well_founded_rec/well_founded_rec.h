@@ -89,6 +89,8 @@ public:
   const variant_t &v() const { return v_; }
 };
 
+struct Nat {};
+
 struct WellFoundedRec {
   static List<uint64_t> countdown_acc(uint64_t n);
   static List<uint64_t> countdown(uint64_t x0_);

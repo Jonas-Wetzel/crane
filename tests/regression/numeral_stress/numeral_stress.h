@@ -91,6 +91,8 @@ public:
   const variant_t &v() const { return v_; }
 };
 
+struct Z {};
+
 struct NumeralStress {
   /// 1. Numeral inside option
   static inline const std::optional<uint64_t> opt_100 =

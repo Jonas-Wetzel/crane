@@ -3,7 +3,7 @@
 
 #include <cassert>
 
-struct PeanoNat {
+struct Nat {
   static uint64_t div2(uint64_t n);
 };
 

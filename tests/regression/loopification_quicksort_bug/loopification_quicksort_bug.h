@@ -144,6 +144,8 @@ public:
   }
 };
 
+struct Nat {};
+
 struct QuicksortFun {
   template <typename F1>
     requires std::is_invocable_r_v<List<uint64_t>, F1 &, List<uint64_t> &>

@@ -13,6 +13,8 @@
 #include <utility>
 #include <variant>
 
+struct Nat {};
+
 template <typename K, typename V> struct SkipList {
   std::shared_ptr<SkipNode<K, V>> slHead;
   uint64_t slMaxLevel;

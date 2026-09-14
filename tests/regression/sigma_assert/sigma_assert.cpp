@@ -1,6 +1,6 @@
 #include "sigma_assert.h"
 
-uint64_t PeanoNat::div2(uint64_t n) {
+uint64_t Nat::div2(uint64_t n) {
   if (n <= 0) {
     return UINT64_C(0);
   } else {
@@ -9,7 +9,7 @@ uint64_t PeanoNat::div2(uint64_t n) {
       return UINT64_C(0);
     } else {
       uint64_t n_ = n0 - 1;
-      return (PeanoNat::div2(n_) + 1);
+      return (div2(n_) + 1);
     }
   }
 }
@@ -21,5 +21,5 @@ uint64_t SigmaAssert::safe_pred(const uint64_t &n) { // Precondition: n != 0
 
 uint64_t SigmaAssert::safe_div2(const uint64_t &n) { // Precondition: n >= 1
   assert(n >= 1);
-  return PeanoNat::div2(n);
+  return Nat::div2(n);
 }

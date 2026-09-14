@@ -1,6 +1,6 @@
 #include "validated_virtual_crossmatch_trace.h"
 
-bool PeanoNat::eq_dec(uint64_t n, uint64_t m) {
+bool Nat::eq_dec(uint64_t n, uint64_t m) {
   if (n <= 0) {
     if (m <= 0) {
       return true;
@@ -14,7 +14,7 @@ bool PeanoNat::eq_dec(uint64_t n, uint64_t m) {
       return false;
     } else {
       uint64_t n1 = m - 1;
-      bool s = PeanoNat::eq_dec(n0, n1);
+      bool s = eq_dec(n0, n1);
       if (s) {
         return true;
       } else {
@@ -74,7 +74,7 @@ bool ValidatedVirtualCrossmatchTraceCase::hla_allele_eq_dec(
   ValidatedVirtualCrossmatchTraceCase::HLALocus hla_locus1 = y.hla_locus;
   uint64_t hla_group1 = y.hla_group;
   if (hla_locus_eq_dec(hla_locus0, hla_locus1)) {
-    if (PeanoNat::eq_dec(hla_group0, hla_group1)) {
+    if (Nat::eq_dec(hla_group0, hla_group1)) {
       return true;
     } else {
       return false;
@@ -105,7 +105,7 @@ bool ValidatedVirtualCrossmatchTraceCase::epitope_eq_dec(
   ValidatedVirtualCrossmatchTraceCase::HLALocus epitope_locus1 =
       y.epitope_locus;
   bool epitope_immunogenic1 = y.epitope_immunogenic;
-  if (PeanoNat::eq_dec(epitope_id0, epitope_id1)) {
+  if (Nat::eq_dec(epitope_id0, epitope_id1)) {
     if (hla_locus_eq_dec(epitope_locus0, epitope_locus1)) {
       if (Bool::bool_dec(epitope_immunogenic0, epitope_immunogenic1)) {
         return true;

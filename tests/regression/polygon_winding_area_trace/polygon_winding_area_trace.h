@@ -130,6 +130,8 @@ public:
   }
 };
 
+struct Nat {};
+
 struct Pos {
   template <typename T1, typename F0>
     requires std::is_invocable_r_v<T1, F0 &, T1 &>
@@ -146,7 +148,7 @@ struct Pos {
   }
 };
 
-struct BinInt {
+struct Z {
   static int64_t pow_pos(int64_t z, unsigned int x0_);
 };
 

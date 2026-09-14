@@ -101,6 +101,10 @@ public:
   const variant_t &v() const { return v_; }
 };
 
+struct Nat {};
+
+struct Z {};
+
 template <typename Err> struct ExceptE {
   // DATA
   Err a0;

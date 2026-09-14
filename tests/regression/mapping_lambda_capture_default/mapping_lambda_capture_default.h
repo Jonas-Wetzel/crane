@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <utility>
 
+struct Z {};
+
 /// ZInt expands Z.div and Z.modulo into an immediately-invoked lambda
 /// that adjusts C++ truncation to Rocq's flooring.  That lambda is written
 /// [&], which C++ forbids for a lambda at class or namespace scope -- and a

@@ -8,6 +8,8 @@ struct Pos {
   static mpz_class add_carry(const mpz_class &x, const mpz_class &y);
 };
 
+struct N {};
+
 struct NGMPTest {
   static mpz_class add_test(const mpz_class &x0_, const mpz_class &x1_);
   static mpz_class mul_test(const mpz_class &x0_, const mpz_class &x1_);

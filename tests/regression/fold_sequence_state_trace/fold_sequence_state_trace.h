@@ -129,6 +129,8 @@ public:
   }
 };
 
+struct Nat {};
+
 struct FoldSequenceStateTraceCase {
   using Point = std::pair<Real, Real>;
 

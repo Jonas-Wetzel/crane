@@ -91,6 +91,10 @@ public:
   const variant_t &v() const { return v_; }
 };
 
+struct N {};
+
+struct Z {};
+
 struct NumeralEdge {
   /// 1. Zero
   static inline const uint64_t nat_zero = UINT64_C(0);

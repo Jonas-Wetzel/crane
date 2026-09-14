@@ -1,6 +1,6 @@
 #include "equations.h"
 
-bool PeanoNat::even(uint64_t n) {
+bool Nat::even(uint64_t n) {
   if (n <= 0) {
     return true;
   } else {
@@ -9,12 +9,12 @@ bool PeanoNat::even(uint64_t n) {
       return false;
     } else {
       uint64_t n_ = n0 - 1;
-      return PeanoNat::even(n_);
+      return even(n_);
     }
   }
 }
 
-uint64_t PeanoNat::div2(uint64_t n) {
+uint64_t Nat::div2(uint64_t n) {
   if (n <= 0) {
     return UINT64_C(0);
   } else {
@@ -23,7 +23,7 @@ uint64_t PeanoNat::div2(uint64_t n) {
       return UINT64_C(0);
     } else {
       uint64_t n_ = n0 - 1;
-      return (PeanoNat::div2(n_) + 1);
+      return (div2(n_) + 1);
     }
   }
 }
@@ -105,7 +105,7 @@ uint64_t Equations::collatz_steps(uint64_t x) {
 
 uint64_t Equations::collatz_steps_unfold_clause_3(uint64_t n, bool refine) {
   if (refine) {
-    return (collatz_steps(PeanoNat::div2(n)) + 1);
+    return (collatz_steps(Nat::div2(n)) + 1);
   } else {
     return (collatz_steps(((UINT64_C(3) * n) + UINT64_C(1))) + 1);
   }
@@ -120,7 +120,7 @@ uint64_t Equations::collatz_steps_unfold(uint64_t n) {
       return UINT64_C(0);
     } else {
       uint64_t n1 = n0 - 1;
-      return collatz_steps_unfold_clause_3(n1, PeanoNat::even(((n1 + 1) + 1)));
+      return collatz_steps_unfold_clause_3(n1, Nat::even(((n1 + 1) + 1)));
     }
   }
 }
@@ -136,11 +136,11 @@ Equations::collatz_steps_graph_correct(uint64_t x) {
     } else {
       uint64_t n0 = n - 1;
       return collatz_steps_graph::collatz_steps_graph_refinement_3(n0, [&]() {
-        bool refine = PeanoNat::even(((n0 + 1) + 1));
+        bool refine = Nat::even(((n0 + 1) + 1));
         if (refine) {
           return collatz_steps_clause_3_graph::
               collatz_steps_clause_3_graph_equation_1(n0, [&]() {
-                uint64_t y = PeanoNat::div2(n0);
+                uint64_t y = Nat::div2(n0);
                 return collatz_steps_graph_correct(y);
               }());
         } else {
