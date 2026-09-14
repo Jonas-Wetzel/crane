@@ -111,28 +111,6 @@
   (deps cps_continuation_copy.t.exe)
   (action (run ./cps_continuation_copy.t.exe))))
 
-(subdir dependent_match_branch_types
- (rule
-  (targets dependent_match_branch_types.t.exe)
-  (deps DependentMatchBranchTypes.vo dependent_match_branch_types.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} dependent_match_branch_types.t.exe dependent_match_branch_types.cpp dependent_match_branch_types.t.cpp)))
- (rule
-  (alias runtest)
-  (deps dependent_match_branch_types.t.exe)
-  (action (run ./dependent_match_branch_types.t.exe))))
-
-(subdir erased_fn_in_recursive_container
- (rule
-  (targets erased_fn_in_recursive_container.t.exe)
-  (deps ErasedFnInRecursiveContainer.vo erased_fn_in_recursive_container.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} erased_fn_in_recursive_container.t.exe erased_fn_in_recursive_container.cpp erased_fn_in_recursive_container.t.cpp)))
- (rule
-  (alias runtest)
-  (deps erased_fn_in_recursive_container.t.exe)
-  (action (run ./erased_fn_in_recursive_container.t.exe))))
-
 (subdir functor_local_class_template_kw
  (rule
   (targets functor_local_class_template_kw.t.exe)

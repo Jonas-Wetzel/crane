@@ -667,6 +667,11 @@ val instance_dependent : cpp_type -> (Id.t * GlobRef.t) option
     @return the structurally-transformed type *)
 val map_cpp_type : (cpp_type -> cpp_type) -> cpp_type -> cpp_type
 
+(** What a branch throws when the scrutinee's indices rule it out; shared by
+    the coercion seam and the sweep over a finished body, which recognise such
+    a branch independently. *)
+val dead_branch_message : string
+
 (** [curry_fun_type ty] respells every multi-parameter function type inside
     [ty] as nested single-parameter ones, as required of a type standing at a
     template argument position. *)

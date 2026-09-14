@@ -72,8 +72,14 @@ val find_self_ref_args :
 (** Whether a MiniML type is fully erased. *)
 val is_erased_ml_type : Miniml.ml_type -> bool
 
-(** Whether a MiniML type contains an erased component anywhere within it. *)
-val ml_type_contains_erased : Miniml.ml_type -> bool
+(** Whether a MiniML type contains an erased component anywhere within it.
+    Arrows are opaque unless [~in_arrows:true]. *)
+val ml_type_contains_erased : ?in_arrows:bool -> Miniml.ml_type -> bool
+
+(** Whether a type variable survives anywhere in a MiniML type — a variable no
+    substitution reached, which would be spelled as an out-of-scope template
+    parameter. *)
+val ml_type_contains_tvar : Miniml.ml_type -> bool
 
 (** {2 Arrow and codomain analysis} *)
 

@@ -3056,11 +3056,6 @@ and iife_void_return env typ pv =
     application that consumed it -- and because it may still mention type
     variables that mean nothing in a non-template context.
 
-    A [tt] returned from a branch that a dependent match makes unreachable
-    counts too: it has no common type with the live branches either, and the
-    annotation is what lets {!Gen_decls.dead_unit_returns_to_abort} recognise
-    the branch as dead.
-
     The question is asked of the generated statements, not of the ML terms: a
     branch spells a closure whether it was written as a lambda, arose from a
     partial application, or is a function-typed binder handed straight back,
@@ -3084,7 +3079,6 @@ and iife_closure_return env typ pv stmts =
     match e with
     | CPPlambda _ -> found := true
     | CPPvar id when binder_is_fun id -> found := true
-    | CPPglob (r, _, _) when Table.is_tt_constructor r -> found := true
     | _ -> ()
   in
   let rec scan_stmt s =
@@ -3824,7 +3818,7 @@ and gen_expr_custom_cons ?expected_ty ?(slot = empty_slot) env (ty : ml_type)
        can't resolve sub-metas in the pair's own type annotation.
        The expected type comes from t_effective which may have different (resolved) metas. *)
     let fallback_from_expected tys =
-      if List.exists ml_type_contains_erased tys then
+      if List.exists (ml_type_contains_erased ~in_arrows:true) tys then
         match slot.expected_ml_ty with
         | Some exp ->
           let ctor_ind = match r with
@@ -3835,8 +3829,16 @@ and gen_expr_custom_cons ?expected_ty ?(slot = empty_slot) env (ty : ml_type)
           | Miniml.Tglob (exp_n, exp_tys, _), Some ind
             when GlobRef.CanOrd.equal exp_n ind
                  && List.length exp_tys = List.length tys ->
+            (* An arrow the annotation left unresolved is erasure too -- the
+               closure inside an [option (nat -> nat)] is precisely what the
+               slot knows and the annotation does not.  The slot's answer is
+               only usable where no type variable survives in it: one that does
+               names a template parameter out of scope here, and would print as
+               a bare [T1]. *)
             List.map2 (fun local outer ->
-              if ml_type_contains_erased local then outer else local) tys exp_tys
+              if ml_type_contains_erased ~in_arrows:true local
+                 && not (Ml_type_util.ml_type_contains_tvar outer)
+              then outer else local) tys exp_tys
           | _ -> tys)
         | None -> tys
       else tys
@@ -4180,6 +4182,16 @@ and gen_expr_custom_cons ?expected_ty ?(slot = empty_slot) env (ty : ml_type)
      resolved) emits, causing an [any_cast] shape mismatch at runtime. *)
   let ty =
     match ty with
+    (* Resolved, but resolved to the producer's own erased instantiation: the
+       closure stored in a [rose (option (nat -> nat))] left its arrow's metas
+       unresolved, so the node would be built at [rose<optional<function<any
+       (any)>>>] while the consumer names the concrete one.  The slot's
+       arguments -- which is what [ty_args_for_expected] already merges in --
+       are the ones both sides agree on. *)
+    | Miniml.Tglob (n, tys, sc)
+      when List.length ty_args_for_expected = List.length tys
+           && List.exists (ml_type_contains_erased ~in_arrows:true) tys ->
+      Miniml.Tglob (n, ty_args_for_expected, sc)
     | Miniml.Tglob _ -> ty
     | _ when ty_args_for_expected <> [] ->
       ( match r with
@@ -4546,6 +4558,27 @@ and recover_boxed_component into e =
 and stmts_yield_boxed = function
   | [Sasgn (_, _, v)] -> yields_boxed_component v
   | _ -> false
+
+(** Whether a coercion is one the Rocq indices rule out, rather than one C++
+    can perform.
+
+    Extraction records [Mcoerce (unit, nat)] for the [vnil] branch of a match
+    on [vec (S n)] whose [return] clause computes [unit] there: a branch whose
+    type differs from the type the match was instantiated at is one the
+    scrutinee's index makes impossible.  [unit] is where this shows up
+    unambiguously -- it carries no information, so no value of it can be
+    converted to anything else, and a position holding one at another type can
+    only be a position that is never reached.  What it returns is immaterial,
+    and the only thing writable at an impossible type is an abort.
+
+    The mirror is {!Gen_decls.dead_unit_returns_to_abort}, which catches the
+    same branch where extraction recorded no coercion at all and a bare [tt]
+    reaches a [return]; both throw {!Minicpp.dead_branch_message}. *)
+and absurd_coercion from into =
+  Ml_type_util.ml_type_is_unit from
+  && (not (is_cpp_unit_type into))
+  && into <> Tvoid
+  && not (resolves_to_any_type into)
 
 (** [coerce ?term ?from ~into expr] adapts [expr] across a representation
     boundary: it is the single place that decides between boxing, [any_cast],
@@ -6196,6 +6229,31 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
           | Some t -> resolves_to_any_type t
           | None -> false ) }
     in
+    (* The annotation carries this producer's own instantiation, and a stored
+       closure whose arrows extraction never unified leaves it erased -- a
+       [rose (option (nat -> nat))] node is annotated at
+       [rose<optional<function<any(any)>>>] while the consumer names the
+       concrete one.  Where the position states the same inductive, its
+       arguments are the ones both sides agree on, so take them for the
+       positions the annotation erased.  Not under [deep_erase]: there the
+       erased instantiation {i is} the canonical one. *)
+    let ty =
+      match (resolve_tmeta ty, Option.map resolve_tmeta slot.expected_ml_ty) with
+      | Miniml.Tglob (n, tys, sc), Some (Miniml.Tglob (n', exp_tys, _))
+        when (not slot.deep_erase)
+             && globref_equal n n'
+             && List.length tys = List.length exp_tys
+             && List.exists (ml_type_contains_erased ~in_arrows:true) tys ->
+        Miniml.Tglob
+          ( n,
+            List.map2
+              (fun local outer ->
+                if ml_type_contains_erased ~in_arrows:true local then outer
+                else local )
+              tys exp_tys,
+            sc )
+      | _ -> ty
+    in
     (* Setting [in_constructor_expr] makes unresolvable promoted vars (those
        NOT in [promoted_var_map]) fall back to [Tany] = [std::any].
 
@@ -7261,15 +7319,29 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
              [std::bad_any_cast] at the consumer.  Generate the body with
              [deep_erase] so cons productions deep-erase their element
              type to match nil.  See the mirror in the record-constructor path. *)
-          (* The same field type on the ML side, for the argument that can only
-             learn its instantiation from the slot: an applied parameter
-             ([F A]) says nothing on its own, and substituting this call's type
-             arguments turns it into the [option nat] the argument is built at. *)
+          (* The same field type on the ML side.  A field's declared type says
+             nothing on its own -- a bare parameter ([A]) or an applied one
+             ([F A]) names the inductive's variables, not this value's types --
+             but substituting the constructor's own type arguments turns it
+             into the [option (nat -> nat)] the argument is actually built at,
+             which is finer than the slot's expectation (that one states the
+             whole inductive, not this field).  An applied parameter is taken
+             unconditionally, as it always resolved that way; for any other
+             field the substitution is only an improvement when it left neither
+             erasure nor a stray type variable behind -- otherwise the slot
+             remains the better guess. *)
           let expected_ml_for_arg =
             match ft_opt with
-            | Some (Miniml.Tapp _ as ft) ->
-              Some (Mlutil.type_subst_list ty_ml_tparams ft)
-            | _ -> slot.expected_ml_ty
+            | Some ft -> (
+              let inst = Mlutil.type_subst_list ty_ml_tparams ft in
+              match ft with
+              | Miniml.Tapp _ -> Some inst
+              | _
+                when (not (ml_type_contains_erased ~in_arrows:true inst))
+                     && not (Ml_type_util.ml_type_contains_tvar inst) ->
+                Some inst
+              | _ -> slot.expected_ml_ty )
+            | None -> slot.expected_ml_ty
           in
           let expr =
             gen_ctor_arg
@@ -7990,6 +8062,11 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
                         | Tglob (g, _, _) -> is_prod_global g
                         | _ -> false ) ->
               coerce ~from ~into:(boxed_shape_of ty) inner
+            | Some _
+              when ( match m with
+                   | Mcoerce (from, _) -> absurd_coercion from ty
+                   | Mboxed | Mbarrier -> false ) ->
+              CPPabort (Minicpp.dead_branch_message, ty)
             | _ -> inner )
       | _ -> inner )
   | MLdummy _ ->

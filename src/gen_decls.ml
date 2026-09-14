@@ -1918,7 +1918,7 @@ let dead_unit_returns_to_abort (cod : cpp_type) (body : cpp_stmt list) =
       Sreturn
         (Some
            (CPPabort
-              ( "unreachable: impossible dependent match branch",
+              ( Minicpp.dead_branch_message,
                 (match ret_ty with Some t -> t | None -> Tany) )))
     | _ -> map_stmt (fix_expr ret_ty) (fix_stmt ret_ty) (fun t -> t) s
   and fix_expr ret_ty e =

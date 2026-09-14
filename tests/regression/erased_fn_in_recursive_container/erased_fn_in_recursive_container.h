@@ -221,15 +221,15 @@ struct ErasedFnInRecursiveContainer {
 
   static inline const uint64_t run = size<
       std::optional<std::function<uint64_t(uint64_t)>>>(
-      rose<std::optional<std::function<std::any(std::any)>>>::node(
-          std::make_optional<std::function<std::any(std::any)>>(
+      rose<std::optional<std::function<uint64_t(uint64_t)>>>::node(
+          std::make_optional<std::function<uint64_t(uint64_t)>>(
               [](const auto &x) { return x; }),
-          List<rose<std::optional<std::function<std::any(std::any)>>>>::cons(
-              rose<std::optional<std::function<std::any(std::any)>>>::node(
-                  std::optional<std::function<std::any(std::any)>>(),
-                  List<rose<std::optional<std::function<std::any(std::any)>>>>::
+          List<rose<std::optional<std::function<uint64_t(uint64_t)>>>>::cons(
+              rose<std::optional<std::function<uint64_t(uint64_t)>>>::node(
+                  std::optional<std::function<uint64_t(uint64_t)>>(),
+                  List<rose<std::optional<std::function<uint64_t(uint64_t)>>>>::
                       nil()),
-              List<rose<std::optional<std::function<std::any(std::any)>>>>::
+              List<rose<std::optional<std::function<uint64_t(uint64_t)>>>>::
                   nil())));
 };
 

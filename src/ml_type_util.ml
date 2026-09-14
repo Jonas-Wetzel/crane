@@ -113,11 +113,34 @@ let is_erased_ml_type = function
   | _ -> false
 
 (** Recursive check for erased sub-types inside an ML type.  Resolves [Tmeta]
-    chains before checking, then recurses into [Tglob] type arguments. *)
-let rec ml_type_contains_erased ty =
+    chains before checking, then recurses into [Tglob] type arguments.
+
+    An arrow is opaque by default: the metas of a function type are the callee's
+    own business, and treating them as erasure here would make every stored
+    closure look erased to callers that only care about the data around it.
+    [~in_arrows:true] looks through them, for a caller asking whether a type is
+    concrete enough to be spelled -- the closure inside
+    [option (nat -> nat)] is exactly what such a caller must not miss. *)
+let rec ml_type_contains_erased ?(in_arrows = false) ty =
+  let recur = ml_type_contains_erased ~in_arrows in
   match resolve_tmeta ty with
   | Miniml.Tmeta _ | Miniml.Tdummy _ | Miniml.Tvar (Schematic, _) -> true
-  | Miniml.Tglob (_, tys, _) -> List.exists ml_type_contains_erased tys
+  | Miniml.Tglob (_, tys, _) -> List.exists recur tys
+  | Miniml.Tarr (a, b) -> in_arrows && (recur a || recur b)
+  | _ -> false
+
+(** Whether a type variable survives anywhere in [ty].
+
+    A variable the surrounding substitution did not reach names a template
+    parameter that is not in scope where the type will be spelled, so a caller
+    weighing whether an instantiated type is usable as a concrete expectation
+    must reject it: converting it prints an undeclared [T1]. *)
+let rec ml_type_contains_tvar ty =
+  match resolve_tmeta ty with
+  | Miniml.Tvar _ -> true
+  | Miniml.Tglob (_, tys, _) | Miniml.Tapp (_, tys) ->
+    List.exists ml_type_contains_tvar tys
+  | Miniml.Tarr (a, b) -> ml_type_contains_tvar a || ml_type_contains_tvar b
   | _ -> false
 
 (** Return the codomain of an ML type, chasing through arrows and meta
