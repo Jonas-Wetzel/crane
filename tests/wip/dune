@@ -219,14 +219,3 @@
   (alias runtest)
   (deps phantom_type_arg_never_emitted.t.exe)
   (action (run ./phantom_type_arg_never_emitted.t.exe))))
-
-(subdir user_inductive_shadows_stdlib
- (rule
-  (targets user_inductive_shadows_stdlib.t.exe)
-  (deps UserInductiveShadowsStdlib.vo user_inductive_shadows_stdlib.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} user_inductive_shadows_stdlib.t.exe user_inductive_shadows_stdlib.cpp user_inductive_shadows_stdlib.t.cpp)))
- (rule
-  (alias runtest)
-  (deps user_inductive_shadows_stdlib.t.exe)
-  (action (run ./user_inductive_shadows_stdlib.t.exe))))

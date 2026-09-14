@@ -375,6 +375,17 @@
   (deps sigma_assert.t.exe)
   (action (run ./sigma_assert.t.exe))))
 
+(subdir user_inductive_shadows_stdlib
+ (rule
+  (targets user_inductive_shadows_stdlib.t.exe)
+  (deps UserInductiveShadowsStdlib.vo user_inductive_shadows_stdlib.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} user_inductive_shadows_stdlib.t.exe user_inductive_shadows_stdlib.cpp user_inductive_shadows_stdlib.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps user_inductive_shadows_stdlib.t.exe)
+  (action (run ./user_inductive_shadows_stdlib.t.exe))))
+
 (subdir well_founded_rec
  (rule
   (targets well_founded_rec.t.exe)
