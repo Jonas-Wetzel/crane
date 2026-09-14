@@ -150,6 +150,23 @@ let rec mp_encloses outer mp =
   | Names.ModPath.MPdot (parent, _) -> mp_encloses outer parent
   | _ -> false
 
+(** How the module a reference was declared in stands to the module the struct
+    being rendered came from. *)
+type mp_relation =
+  | Member  (** declared in that module, or in one nested inside it *)
+  | Ancestor  (** declared in a module that encloses it *)
+  | Unrelated  (** neither encloses the other *)
+
+(** [mp_relation_to ~struct_mp r] classifies [r] against [struct_mp].  The
+    three cases are exhaustive and mutually exclusive, which is what says that
+    a reference the struct does not contain and that does not contain the
+    struct is simply not a member of it. *)
+let mp_relation_to ~struct_mp r =
+  let r_mp = modpath_of_r r in
+  if mp_encloses struct_mp r_mp then Member
+  else if mp_encloses r_mp struct_mp then Ancestor
+  else Unrelated
+
 (** Check if a type name is already qualified (contains ::) *)
 let is_qualified_name name_str = String.contains name_str ':'
 
@@ -474,22 +491,18 @@ let struct_qualifier_for r name_str =
        contains nor is contained by this struct's is not a member of it, so it
        takes no qualifier at all; only a type from an ancestor module is left
        to the heuristics, which pick the right ancestor prefix for it. *)
-    else if
-      match (!render_ctx).rc_struct_mp with
-      | Some mp -> mp_encloses mp (modpath_of_r r)
-      | None -> false
-    then
-      struct_name ++ str "::"
-    else if
-      match (!render_ctx).rc_struct_mp with
-      | Some mp -> not (mp_encloses (modpath_of_r r) mp)
-      | None -> false
-    then
-      mt ()
-    (* Default: qualify when the type's Rocq path nests under the struct,
-       or when the type already carries a qualified C++ name whose Rocq path
-       nests under the struct's parent module. *)
-    else
+    else (
+      match
+        Option.map
+          (fun struct_mp -> mp_relation_to ~struct_mp r)
+          (!render_ctx).rc_struct_mp
+      with
+      | Some Member -> struct_name ++ str "::"
+      | Some Unrelated -> mt ()
+      | Some Ancestor | None ->
+      (* Default: qualify when the type's Rocq path nests under the struct,
+         or when the type already carries a qualified C++ name whose Rocq path
+         nests under the struct's parent module. *)
       let full_path = globref_full_path r in
       let struct_name_dotted = cpp_to_rocq_path struct_name_str in
       let parent_struct_dotted =
@@ -521,7 +534,7 @@ let struct_qualifier_for r name_str =
            [full_path] and [struct_name_dotted] to avoid re-deriving them. *)
         find_ancestor_qualifier_from full_path struct_name_dotted
       else
-        mt ()
+        mt () )
   | _ -> mt ()
 
 (** Prefix a global-scope type name with [::] when a module-local inductive of
