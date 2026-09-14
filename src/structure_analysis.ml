@@ -51,11 +51,65 @@ let rec module_expr_source = function
   | MEstruct _ -> None
 
 (** The [MEstruct] body a module expression eventually reaches, past any
-    functor parameters. *)
+    functor parameters, together with the module path that body was declared
+    under. *)
 let rec module_expr_struct = function
   | MEfunctor (_, _, body) -> module_expr_struct body
-  | MEstruct (_, sel) -> Some sel
+  | MEstruct (mp, sel) -> Some (mp, sel)
   | MEident _ | MEapply _ -> None
+
+(** {2 Traversal} *)
+
+(** Fold [f] over every element of [s], descending into nested module bodies.
+
+    [f ctx mp l se acc] sees an element under label [l] declared in the module
+    at path [mp], with the context in force there.  The context starts at
+    [root mp] in each top-level module and is renewed by [enter] on the way
+    into a nested one.
+
+    Every collector below walks the structure this way; they differ only in the
+    context they carry down, so the descent -- which module expressions have a
+    body, and what path that body is under -- is settled once, here. *)
+let fold_structure
+    ~(root : ModPath.t -> 'ctx)
+    ~(enter : 'ctx -> ModPath.t -> 'ctx)
+    (f : 'ctx -> ModPath.t -> Label.t -> ml_structure_elem -> 'a -> 'a)
+    (s : ml_structure)
+    (acc : 'a) : 'a =
+  let rec go ctx mp sel acc =
+    List.fold_left
+      (fun acc (l, se) ->
+        let acc = f ctx mp l se acc in
+        match se with
+        | SEmodule m -> (
+          match module_expr_struct m.ml_mod_expr with
+          | Some (body_mp, inner) -> go (enter ctx body_mp) body_mp inner acc
+          | None -> acc )
+        | _ -> acc )
+      acc
+      sel
+  in
+  List.fold_left (fun acc (mp, sel) -> go (root mp) mp sel acc) acc s
+
+(** {!fold_structure} for the collectors that carry no context and accumulate
+    by side effect. *)
+let iter_structure
+    (f : ModPath.t -> Label.t -> ml_structure_elem -> unit)
+    (s : ml_structure) : unit =
+  fold_structure ~root:ignore
+    ~enter:(fun () _ -> ())
+    (fun () mp l se () -> f mp l se)
+    s ()
+
+(** The inductives a structure element declares, each as its reference, its
+    index in the mutual block, and the block itself.  An element that declares
+    none contributes nothing, which is what lets the collectors below say what
+    they do with an inductive without each repeating how to find one. *)
+let element_inductives = function
+  | SEdecl (Dind (kn, ind)) ->
+    List.init (Array.length ind.ind_packets) (fun i ->
+      (GlobRef.IndRef (kn, i), i, ind) )
+  | _ -> []
 
 (** [(modpath, source)] for every module that is an alias for, or an
     application of, another module.  Rendering used to record these as it
@@ -64,22 +118,17 @@ let rec module_expr_struct = function
     here. *)
 let collect_functor_app_sources (s : ml_structure) :
     (ModPath.t * ModPath.t) list =
-  let acc = ref [] in
-  let rec collect parent sel =
-    List.iter
-      (fun (l, se) ->
-        match se with
-        | SEmodule m ->
-          let mp = MPdot (parent, l) in
-          ( match module_expr_source m.ml_mod_expr with
-          | Some src -> acc := (mp, src) :: !acc
-          | None -> () );
-          Option.iter (collect mp) (module_expr_struct m.ml_mod_expr)
-        | _ -> () )
-      sel
-  in
-  List.iter (fun (mp, sel) -> collect mp sel) s;
-  List.rev !acc
+  List.rev
+    (fold_structure ~root:ignore
+       ~enter:(fun () _ -> ())
+       (fun () mp l se acc ->
+         match se with
+         | SEmodule m -> (
+           match module_expr_source m.ml_mod_expr with
+           | Some src -> (MPdot (mp, l), src) :: acc
+           | None -> acc )
+         | _ -> acc )
+       s [])
 
 (** {2 Enum registration} *)
 
@@ -98,31 +147,23 @@ let collect_functor_app_sources (s : ml_structure) :
     Detected enums are registered via [Table.add_enum_inductive], which sets a
     global flag queryable by [Table.is_enum_inductive].
 
-    Recurses into sub-modules ([SEmodule] with [MEstruct]) to find enums at any
-    nesting depth. *)
-let rec register_enum_inductives (sel : (Label.t * ml_structure_elem) list) :
-    unit =
-  List.iter
-    (fun (_l, se) ->
-      match se with
-      | SEdecl (Dind (kn, ind)) ->
-        ( match ind.ind_kind with
-        | Record _ | TypeClass _ -> ()
-        | _ ->
-          let is_mutual = Array.length ind.ind_packets > 1 in
-          Array.iteri
-            (fun i p ->
-              let ind_ref = GlobRef.IndRef (kn, i) in
-              if (not (is_custom ind_ref)) && not is_mutual then
-                if Table.is_enum_inductive_packet ind i then
-                  Table.add_enum_inductive ind_ref )
-            ind.ind_packets )
-      | SEmodule m ->
-        ( match m.ml_mod_expr with
-        | MEstruct (_mp, inner_sel) -> register_enum_inductives inner_sel
-        | _ -> () )
-      | _ -> () )
-    sel
+    Recurses into sub-modules to find enums at any nesting depth. *)
+let register_enum_inductives (s : ml_structure) : unit =
+  iter_structure
+    (fun _mp _l se ->
+      List.iter
+        (fun (ind_ref, i, ind) ->
+          match ind.ind_kind with
+          | Record _ | TypeClass _ -> ()
+          | _ ->
+            let is_mutual = Array.length ind.ind_packets > 1 in
+            if
+              (not (is_custom ind_ref))
+              && (not is_mutual)
+              && Table.is_enum_inductive_packet ind i
+            then Table.add_enum_inductive ind_ref )
+        (element_inductives se) )
+    s
 
 (** {2 Inductive name collection} *)
 
@@ -137,34 +178,24 @@ let rec register_enum_inductives (sel : (Label.t * ml_structure_elem) list) :
 
     Recurses into sub-modules to collect inductives at all nesting depths. *)
 let collect_inductive_names (s : ml_structure) : (string * ModPath.t) list =
-  let acc = ref [] in
-  let rec collect sel =
-    List.iter
-      (fun (_l, se) ->
-        match se with
-        | SEdecl (Dind (kn, ind)) ->
-          let ind_mp = Names.MutInd.modpath kn in
-          Array.iteri
-            (fun i _p ->
-              let ind_ref = GlobRef.IndRef (kn, i) in
-              (* A custom-extracted inductive is spelled as the C++ type it was
-                 mapped to and never declared, so its Rocq name is not taken:
-                 [nat] mapped to [uint64_t] must not push a module called [Nat]
-                 into a collision wrapper. *)
-              if not (Table.is_custom ind_ref) then
-                let ind_name = Common.pp_global_name Type ind_ref in
-                let ind_name_cap = String.capitalize_ascii ind_name in
-                acc := (ind_name_cap, ind_mp) :: !acc )
-            ind.ind_packets
-        | SEmodule m ->
-          ( match m.ml_mod_expr with
-          | MEstruct (_mp, inner_sel) -> collect inner_sel
-          | _ -> () )
-        | _ -> () )
-      sel
-  in
-  List.iter (fun (_mp, sel) -> collect sel) s;
-  !acc
+  fold_structure ~root:ignore
+    ~enter:(fun () _ -> ())
+    (fun () _mp _l se acc ->
+      List.fold_left
+        (fun acc (ind_ref, _i, _ind) ->
+          (* A custom-extracted inductive is spelled as the C++ type it was
+             mapped to and never declared, so its Rocq name is not taken:
+             [nat] mapped to [uint64_t] must not push a module called [Nat]
+             into a collision wrapper. *)
+          if Table.is_custom ind_ref then
+            acc
+          else
+            ( String.capitalize_ascii (Common.pp_global_name Type ind_ref),
+              modpath_of_r ind_ref )
+            :: acc )
+        acc
+        (element_inductives se) )
+    s []
 
 (** {2 Global scope enum collection} *)
 
@@ -702,35 +733,29 @@ let collect_collision_wrappers
     the set when it is built.  Discovering it while rendering would mean
     discovering it after the resolver had already answered. *)
 let collect_eponymous_records (s : ml_structure) : GlobRef.t list =
-  let acc = ref [] in
-  let rec collect module_name sel =
-    let lowercase_module = String.lowercase_ascii module_name in
-    List.iter
-      (fun (l, se) ->
-        match se with
-        | SEdecl (Dind (kn, ind)) ->
-          Array.iteri
-            (fun i _p ->
-              let ind_ref = GlobRef.IndRef (kn, i) in
-              let ind_name = Common.pp_global_name Type ind_ref in
-              if
-                String.equal
-                  (String.lowercase_ascii ind_name)
-                  lowercase_module
-                && match ind.ind_kind with Record _ -> true | _ -> false
-              then acc := ind_ref :: !acc )
-            ind.ind_packets
-        | SEmodule {ml_mod_expr = MEstruct (mp, inner_sel); _} ->
-          (* The name that matters is the one the module struct is emitted
-             under, suffix included: a module renamed out of the way of its
-             inductive is no longer eponymous with it, and the merge that
-             renaming was there to prevent must not happen after all. *)
-          collect (Common.emitted_module_name mp) inner_sel
-        | _ -> () )
-      sel
-  in
-  List.iter (fun (mp, sel) -> collect (string_of_modfile mp) sel) s;
-  List.rev !acc
+  List.rev
+    (fold_structure
+       ~root:(fun mp -> String.lowercase_ascii (string_of_modfile mp))
+         (* The name that matters is the one the module struct is emitted
+            under, suffix included: a module renamed out of the way of its
+            inductive is no longer eponymous with it, and the merge that
+            renaming was there to prevent must not happen after all. *)
+       ~enter:(fun _ mp ->
+         String.lowercase_ascii (Common.emitted_module_name mp) )
+       (fun module_name _mp _l se acc ->
+         List.fold_left
+           (fun acc (ind_ref, _i, ind) ->
+             match ind.ind_kind with
+             | Record _
+               when String.equal
+                      (String.lowercase_ascii
+                         (Common.pp_global_name Type ind_ref) )
+                      module_name ->
+               ind_ref :: acc
+             | _ -> acc )
+           acc
+           (element_inductives se) )
+       s [])
 
 (** Decide the name every type class's concept is emitted under, for the
     classes whose own name does not settle it.
@@ -741,42 +766,42 @@ let collect_eponymous_records (s : ml_structure) : GlobRef.t list =
     qualified with the module that declares it -- all of them, so that which
     name a class gets does not depend on the order they were rendered in. *)
 let collect_concept_renames (s : ml_structure) : (GlobRef.t * string) list =
-  let classes = ref [] in
-  let rec collect sel =
-    List.iter
-      (fun (_l, se) ->
-        match se with
-        | SEdecl (Dind (kn, ind)) ->
-          ( match ind.ind_kind with
-          | TypeClass _ ->
-            Array.iteri
-              (fun i _p -> classes := GlobRef.IndRef (kn, i) :: !classes)
-              ind.ind_packets
-          | _ -> () )
-        | SEmodule {ml_mod_expr = MEstruct (_mp, inner_sel); _} ->
-          collect inner_sel
-        | _ -> () )
-      sel
+  let classes =
+    List.rev
+      (fold_structure ~root:ignore
+         ~enter:(fun () _ -> ())
+         (fun () _mp _l se acc ->
+           List.fold_left
+             (fun acc (ind_ref, _i, ind) ->
+               match ind.ind_kind with
+               | TypeClass _ -> ind_ref :: acc
+               | _ -> acc )
+             acc
+             (element_inductives se) )
+         s [])
   in
-  List.iter (fun (_mp, sel) -> collect sel) s;
   let base r = Common.last_component (Common.pp_global_name Type r) in
-  let counts = Hashtbl.create 8 in
-  List.iter
-    (fun r ->
-      let b = base r in
-      Hashtbl.replace counts b (1 + Option.default 0 (Hashtbl.find_opt counts b)) )
-    !classes;
+  let shared =
+    let counts = Hashtbl.create 8 in
+    List.iter
+      (fun r ->
+        let b = base r in
+        Hashtbl.replace counts b
+          (1 + Option.default 0 (Hashtbl.find_opt counts b)) )
+      classes;
+    fun b -> Option.default 0 (Hashtbl.find_opt counts b) > 1
+  in
   List.filter_map
     (fun r ->
       let b = base r in
-      if Option.default 0 (Hashtbl.find_opt counts b) > 1 then
+      if shared b then
         Some (r, Common.emitted_module_name (modpath_of_r r) ^ "_" ^ b)
       else None )
-    (List.rev !classes)
+    classes
 
 let analyze (reg : Method_registry.t) (s : ml_structure) : t =
   (* 1. Register enum inductives (side-effect: populates Table). *)
-  List.iter (fun (_mp, sel) -> register_enum_inductives sel) s;
+  register_enum_inductives s;
   (* 2. Collect inductive names for name collision detection. *)
   let inductive_names = collect_inductive_names s in
   (* 3. Collect global-scope enums (must run after enum registration). *)
