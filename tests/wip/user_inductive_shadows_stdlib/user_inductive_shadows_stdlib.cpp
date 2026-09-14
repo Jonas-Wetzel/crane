@@ -25,13 +25,13 @@ UserInductiveShadowsStdlib::mine(UserInductiveShadowsStdlib::Comparison c) {
 
 uint64_t UserInductiveShadowsStdlib::theirs(uint64_t a, uint64_t b) {
   switch (Nat::compare(a, b)) {
-  case Comparison::EQ: {
+  case ::Comparison::EQ: {
     return UINT64_C(1);
   }
-  case Comparison::LT: {
+  case ::Comparison::LT: {
     return UINT64_C(0);
   }
-  case Comparison::GT: {
+  case ::Comparison::GT: {
     return UINT64_C(2);
   }
   default:
@@ -42,15 +42,15 @@ uint64_t UserInductiveShadowsStdlib::theirs(uint64_t a, uint64_t b) {
 Comparison Nat::compare(uint64_t n, uint64_t m) {
   if (n <= 0) {
     if (m <= 0) {
-      return Comparison::EQ;
+      return ::Comparison::EQ;
     } else {
       uint64_t _x = m - 1;
-      return Comparison::LT;
+      return ::Comparison::LT;
     }
   } else {
     uint64_t n_ = n - 1;
     if (m <= 0) {
-      return Comparison::GT;
+      return ::Comparison::GT;
     } else {
       uint64_t m_ = m - 1;
       return Nat::compare(n_, m_);

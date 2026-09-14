@@ -2089,7 +2089,10 @@ and pp_cpp_expr env args t =
     (* Generate EnumType::Constructor for enum class values. Use str_global for
        proper module qualification, with collision-aware capitalization. *)
     let full_name = capitalize_enum_qualified (str_global Type ind) ind in
-    str full_name ++ str "::" ++ Id.print ctor
+    global_scope_qualifier_for ind full_name
+    ++ str full_name
+    ++ str "::"
+    ++ Id.print ctor
   | CPPnullptr -> str "nullptr"
   | CPPbraced es ->
     str "{" ++ pp_list (pp_cpp_expr env args) es ++ str "}"
@@ -2297,7 +2300,10 @@ and pp_cpp_stmt env args = function
     (* Generate switch statement for enum class matching. Use pp_global_name to
        get the unqualified base name, capitalize to match enum class
        definition. *)
-    let type_name = pp_inductive_type_name ind in
+    let type_name =
+      let n = pp_inductive_type_name ind in
+      global_scope_qualifier_for ind (Pp.string_of_ppcmds n) ++ n
+    in
     let ends_with_return stmts =
       match List.rev stmts with
       | Sreturn _ :: _ -> true
@@ -4294,6 +4300,13 @@ and pp_cpp_decl_raw env (settled : Cpp_erasure.settled) =
         (List.combine ctors rocq_names)
     in
     register_forward_enum_decl ~name:struct_name;
+    (* An [enum class] nested in a module struct shadows a global-scope type of
+       the same name exactly as a nested struct does, so it is recorded the
+       same way -- the standard library's [comparison] is emitted globally and
+       a user type spelled [Comparison] inside the struct would otherwise
+       capture every unqualified mention of it. *)
+    if (!render_ctx).rc_in_struct then
+      add_nested_struct_name (Pp.string_of_ppcmds struct_name) (NSref name);
     str "enum class "
     ++ struct_name
     ++ str " {"
