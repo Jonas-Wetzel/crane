@@ -5017,23 +5017,46 @@ let local_fix_of_stmt check = function
         Some {lf_self_id; lf_params; lf_captures} )
   | _ -> None
 
+(** The statement lists that run as part of evaluating [e]: the bodies of
+    immediately-invoked zero-parameter lambdas, collected recursively.
+
+    Translation wraps a Coq [let fix] that appears in argument position in one
+    of these, so a fixpoint bound there is part of the enclosing function's
+    flow just as much as one bound by a statement.  The body of a lambda that
+    is merely {i passed} somewhere is not collected: it runs later, under a
+    scope this machine does not control. *)
+let rec invoked_bodies_expr e =
+  let acc = ref [] in
+  ( match e with
+  | CPPfun_call (_, CPPlambda ({cl_params = {rev = []}; _} as l), {rev = []}) ->
+    acc := [l.cl_body]
+  | _ -> () );
+  Minicpp.iter_expr_children
+    ~on_expr:(fun c -> acc := !acc @ invoked_bodies_expr c)
+    ~on_stmts:(fun _ -> ())
+    e;
+  !acc
+
 (** Find the first local fixpoint in [stmts] that calls back into the
     enclosing function.
 
     The search descends through statements -- the fixpoint is often bound
-    inside a match branch rather than at the body's top level -- but not into
-    expressions, so a lambda's own body is not searched: what it binds is a
-    fixpoint local to {i it}, not to the function being loopified.  Passing
-    [Fun.id] as {!Minicpp.map_stmt}'s expression function is what stops the
-    descent there. *)
+    inside a match branch rather than at the body's top level -- and through
+    the invoked lambdas of {!invoked_bodies_expr}, but not into expressions
+    otherwise: the body of a lambda this function merely builds binds a
+    fixpoint local to {i it}, not to the function being loopified. *)
 let find_local_fix check stmts =
   let found = ref None in
   let rec visit stmt =
     if Option.is_empty !found then (
       match local_fix_of_stmt check stmt with
       | Some _ as hit -> found := hit
-      | None -> ignore (map_stmt Fun.id visit Fun.id stmt) );
+      | None -> ignore (map_stmt visit_expr visit Fun.id stmt) );
     stmt
+  and visit_expr e =
+    List.iter (fun body -> List.iter (fun s -> ignore (visit s)) body)
+      (invoked_bodies_expr e);
+    e
   in
   List.iter (fun s -> ignore (visit s)) stmts;
   !found
