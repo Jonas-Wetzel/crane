@@ -4481,9 +4481,6 @@ let make_call_frame_name (prefix : string) (counter : int ref)
 
     @param args The arguments to save in the Enter frame (typically function parameters)
     @return A [CPPstruct_id] expression representing the frame instance *)
-let make_enter_frame (args : cpp_expr list) : cpp_expr =
-  CPPstruct_id (id_enter, [], args)
-
 
 (** Batch-infer types for a list of saved expressions.
 
@@ -4779,7 +4776,10 @@ let rewrite_base_with_inner_calls check e ~rewrite_iife_body ~base_case =
     final expression from saved expressions and call results. *)
 
 type all_calls_decomp = {
-  acd_calls : cpp_expr list list;
+  acd_calls : call_site list;
+      (** The recursive calls, in left-to-right order.  Whole call sites rather
+          than bare argument lists: which frame each one pushes, and at which
+          types, follows from its entry point -- see {!make_enter_at}. *)
   acd_saved : cpp_expr list;
   acd_combine : cpp_expr list -> cpp_expr list -> cpp_expr;
 }
@@ -4790,8 +4790,7 @@ type all_calls_decomp = {
     {b Example.}  For [a + f(x) * f(y)]:
     - [acd_saved = [a]] — non-recursive sub-expressions that must be computed
       before the loop and stored in the stack frame.
-    - [acd_calls = [[x]; [y]]] — argument lists for each recursive call, in
-      left-to-right order.
+    - [acd_calls] — the calls [f(x)] and [f(y)], in left-to-right order.
     - [acd_combine saved results] — rebuilds the original expression:
       [saved.(0) + results.(0) * results.(1)].
 
@@ -4804,7 +4803,7 @@ let rec decompose_all_calls check expr =
   | Some cs ->
     Some
       {
-        acd_calls = [cs.cs_args];
+        acd_calls = [cs];
         acd_saved = [];
         acd_combine = (fun _saved results -> List.hd results);
       }
@@ -4948,17 +4947,38 @@ let rec decompose_all_calls check expr =
 
 (** One entry point of a frame machine.
 
-    An entry is the pair of things a call needs in order to become a stack
-    push: the [_Enter]-style frame struct that entering it goes through, and
-    the mask saying which of that entry's parameters vary across calls and so
-    have to be carried in the frame. A function loopified on its own has a
+    An entry is what a call needs in order to become a stack push: the
+    [_Enter]-style frame struct that entering it goes through, the parameters
+    that entry binds, and the mask saying which of them vary across calls and
+    so have to be carried in the frame. A function loopified on its own has a
     single entry; the representation is a table so that an enclosing function
-    and a fixpoint local to it can later share one stack, each entering
-    through its own frame. *)
+    and a body adopted from it can share one stack, each entering through its
+    own frame.
+
+    The parameters live here rather than beside the entry because everything
+    the machine derives per entry -- which arguments a frame carries, and at
+    which types -- is a function of the two together. Build one with
+    {!machine_entry}, which checks that the mask describes those parameters. *)
 type machine_entry = {
   en_enter_id : Id.t;  (** Frame struct entering this point goes through *)
-  en_varying : bool list;  (** Mask over this entry's parameters *)
+  en_params : (Id.t * cpp_type) list;  (** The parameters this entry binds *)
+  en_varying : bool list;  (** Mask over {!en_params} *)
 }
+
+(** An entry binding [params], entered through [enter_id], carrying the
+    positions [varying] selects. *)
+let machine_entry ~enter_id ~params ~varying =
+  ignore
+    (map2_exn ~what:"a machine entry's varying mask" (fun _ _ -> ()) varying
+       params );
+  {en_enter_id = enter_id; en_params = params; en_varying = varying}
+
+(** The parameters [en] carries in its frame: those that vary across calls.
+    The invariant ones are in scope at the handler already. *)
+let entry_varying_params en = filter_by_mask en.en_varying en.en_params
+
+(** The types of {!entry_varying_params}, the layout of [en]'s frame. *)
+let entry_varying_types en = List.map snd (entry_varying_params en)
 
 (** Everything one entry point contributes to the emitted machine: the frame
     struct its callers push, that struct's pointer-safe mask, the parameters it
@@ -4973,6 +4993,24 @@ type entry_emission = {
   ee_params : (Id.t * cpp_type) list;
   ee_body : cpp_stmt list;
 }
+
+(** What [en] contributes to the machine, given the [body] its handler runs.
+    The parameters are read off the entry, so the struct and the frames pushed
+    at it cannot disagree about what it carries.  [pointer_safe] defaults to
+    all-false: only an entry whose parameters come from the enclosing
+    function's own can borrow rather than own them. *)
+let entry_emission ?pointer_safe en body =
+  let params = entry_varying_params en in
+  let ps =
+    match pointer_safe with
+    | None -> List.map (fun _ -> false) params
+    | Some ps ->
+      ignore
+        (map2_exn ~what:"an entry emission's pointer-safe mask"
+           (fun _ _ -> ()) ps params );
+      ps
+  in
+  {ee_id = en.en_enter_id; ee_ps = ps; ee_params = params; ee_body = body}
 
 (** {3 Local fixpoints that call back into their enclosing function} *)
 
@@ -5332,8 +5370,6 @@ type enter_rewrite_ctx = {
       (** Identifies recursive calls in expressions *)
   er_entries : machine_entry list;
       (** The machine's entry points, indexed by {!call_site.cs_entry} *)
-  er_varying : bool list;
-      (** Bitmask: which function parameters vary across recursive calls *)
   er_tparams : (template_type * Id.t) list;
       (** Template parameters of the enclosing function *)
   er_env : (Id.t * cpp_type) list;
@@ -5344,8 +5380,6 @@ type enter_rewrite_ctx = {
       (** Mutable counter for generating unique frame names *)
   er_frames_ref : call_frame_info list ref;
       (** Mutable accumulator for generated {!call_frame_info} records *)
-  er_varying_param_types : cpp_type list;
-      (** Types of the varying parameters (for frame type inference) *)
   er_branch_ctx : string option;
       (** Constructor name when inside a match branch, for frame naming *)
   er_seen_frame_names : (string, int) Hashtbl.t;
@@ -5358,26 +5392,31 @@ type enter_rewrite_ctx = {
 (** The entry point a call site targets. *)
 let entry_of ctx cs = List.nth ctx.er_entries cs.cs_entry
 
-(** The frame fields entering [cs]'s target carries: its arguments, narrowed to
-    the positions that vary across calls to that entry. The invariant ones are
-    in scope at the handler already, so parking them would be dead weight. *)
-let enter_args_for ctx cs = filter_by_mask (entry_of ctx cs).en_varying cs.cs_args
-
 (** The frame that re-enters machine entry [entry] with [args], narrowed to
-    that entry's varying positions.  {!make_enter_for} is this for a call site
-    that is still to hand; a decomposition that has kept only its arguments
-    reaches the same frame through {!decomposed.d_entry}. *)
+    that entry's varying positions.  The invariant ones are in scope at the
+    handler already, so parking them would be dead weight.
+
+    Which frame struct that is, and which arguments it carries, both follow
+    from the entry -- so the two must be read together, and this is the only
+    place that pairs them.  {!make_enter_for} is this for a call site still to
+    hand; a decomposition that has kept only its arguments reaches the same
+    frame through {!decomposed.d_entry}. *)
+let enter_frame en fields = CPPstruct_id (en.en_enter_id, [], fields)
+
 let make_enter_at ctx entry args =
   let en = List.nth ctx.er_entries entry in
-  CPPstruct_id (en.en_enter_id, [], filter_by_mask en.en_varying args)
+  enter_frame en (filter_by_mask en.en_varying args)
 
-(** The [_Enter]-style frame expression that enters [cs]'s target.
+(** The [_Enter]-style frame expression that enters [cs]'s target. *)
+let make_enter_for ctx cs = make_enter_at ctx cs.cs_entry cs.cs_args
 
-    Which frame that is, and which of [cs]'s arguments it carries, both follow
-    from the call's entry point -- so the two must be read together, and this
-    is the only place that pairs them. *)
-let make_enter_for ctx cs =
-  CPPstruct_id ((entry_of ctx cs).en_enter_id, [], enter_args_for ctx cs)
+(** The frame entering [cs]'s target with [fields], which a caller has already
+    narrowed -- typically a frame's stored copies of the call's arguments. *)
+let make_enter_with ctx cs fields = enter_frame (entry_of ctx cs) fields
+
+(** The frame layout a call site's target expects: the types of the arguments
+    {!make_enter_for} keeps. *)
+let enter_types_for ctx cs = entry_varying_types (entry_of ctx cs)
 
 let partition_saved_invariant invariant_params saved_exprs saved_types =
   let analysis = map2_exn ~what:"partition_saved_invariant" (fun e ty ->
@@ -5427,15 +5466,18 @@ let partition_saved_invariant invariant_params saved_exprs saved_types =
     @return List of statements that push the first [_CallN] frame and the
             first [_Enter] frame onto the stack *)
 let gen_chained_call_frames ctx (acd : all_calls_decomp) =
-  let { er_check = check; er_varying = varying; er_tparams = tparams;
+  let { er_check = _; er_tparams = tparams;
         er_env = env; er_ret_ty = ret_ty;
         er_call_counter = call_counter; er_frames_ref = frames_ref;
-        er_varying_param_types = varying_param_types;
         er_branch_ctx = branch_ctx;
         er_seen_frame_names = seen;
         er_invariant_params = invariant_params } = ctx
   in
   let n_calls = List.length acd.acd_calls in
+  (* The arguments a pending call parks in a frame, and their types, are the
+     ones its own entry point carries -- not this entry's. *)
+  let parked cs = filter_by_mask (entry_of ctx cs).en_varying cs.cs_args in
+  let parked_types cs = enter_types_for ctx cs in
   let all_acd_saved_types = infer_saved_types tparams env acd.acd_saved in
   let (must_store, must_store_types, rebuild) =
     partition_saved_invariant invariant_params acd.acd_saved all_acd_saved_types in
@@ -5471,17 +5513,11 @@ let gen_chained_call_frames ctx (acd : all_calls_decomp) =
       let remaining_calls =
         List.filteri (fun i _ -> i > call_idx) acd.acd_calls
       in
-      let remaining_args =
-        List.concat_map
-          (fun args -> filter_by_mask varying args)
-          remaining_calls
-      in
-      (* Use varying param types for remaining call args — more reliable than
-         infer_saved_type which can't handle CPPfun_call(CPPglob ...) *)
-      let n_remaining_calls = List.length remaining_calls in
-      let remaining_arg_types =
-        List.concat (List.init n_remaining_calls (fun _ -> varying_param_types))
-      in
+      let remaining_args = List.concat_map parked remaining_calls in
+      (* Use the target entry's parameter types for remaining call args — more
+         reliable than infer_saved_type which can't handle
+         CPPfun_call(CPPglob ...) *)
+      let remaining_arg_types = List.concat_map parked_types remaining_calls in
       (* Move/copy args for frame storage *)
       let remaining_args_conv =
         move_for_frame_list remaining_arg_types remaining_args in
@@ -5493,10 +5529,8 @@ let gen_chained_call_frames ctx (acd : all_calls_decomp) =
       in
       let all_field_names = derive_field_names all_saved_exprs in
       let handler =
-        let n_remaining_args_for_next =
-          List.length
-            (filter_by_mask varying (List.nth acd.acd_calls (call_idx + 1)))
-        in
+        let next_call = List.nth acd.acd_calls (call_idx + 1) in
+        let n_remaining_args_for_next = List.length (parked next_call) in
         let next_args =
           frame_fields_named ~offset:n_partials all_field_names n_remaining_args_for_next
         in
@@ -5520,7 +5554,7 @@ let gen_chained_call_frames ctx (acd : all_calls_decomp) =
         [
           make_stack_push
             (CPPstruct_id (Id.of_string next_name, [], next_push_args));
-          make_stack_push (CPPstruct_id (id_enter, [], next_args));
+          make_stack_push (make_enter_with ctx next_call next_args);
         ]
       in
       register_frame frames_ref ~name:call_name
@@ -5529,23 +5563,19 @@ let gen_chained_call_frames ctx (acd : all_calls_decomp) =
       call_name
   in
   let first_call_name = gen_frames 0 in
-  let first_args = filter_by_mask varying (List.hd acd.acd_calls) in
+  let first_call = List.hd acd.acd_calls in
   let remaining_calls = List.tl acd.acd_calls in
-  let remaining_args =
-    List.concat_map (fun args -> filter_by_mask varying args) remaining_calls
-  in
   (* Move/copy args for frame storage *)
-  let remaining_arg_types_init =
-    let n = List.length remaining_calls in
-    List.concat (List.init n (fun _ -> varying_param_types))
-  in
   let remaining_args_conv =
-    move_for_frame_list remaining_arg_types_init remaining_args in
+    move_for_frame_list
+      (List.concat_map parked_types remaining_calls)
+      (List.concat_map parked remaining_calls)
+  in
   let first_frame_saved = remaining_args_conv @ saved_exprs_conv in
   [
     make_stack_push
       (CPPstruct_id (Id.of_string first_call_name, [], first_frame_saved));
-    make_stack_push (CPPstruct_id (id_enter, [], first_args));
+    make_stack_push (make_enter_for ctx first_call);
   ]
 
 (** Lift recursive calls out of an expression into temporary variable
@@ -5603,7 +5633,7 @@ let lift_recursive_calls check ret_ty env expr =
     @return Push statements for [_CallN] + [_Enter] *)
 let emit_single_call_frame ctx (d : decomposed) ~make_handler =
   let { er_tparams = tparams; er_env = env; er_call_counter = call_counter;
-        er_frames_ref = frames_ref; er_varying = varying;
+        er_frames_ref = frames_ref;
         er_branch_ctx = branch_ctx; er_seen_frame_names = seen;
         er_invariant_params = invariant_params; _ } = ctx
   in
@@ -5662,7 +5692,6 @@ let emit_single_call_frame ctx (d : decomposed) ~make_handler =
 let emit_double_call_frames ctx dd ~extra_saved ~extra_types ~make_final_handler =
   let { er_tparams = tparams; er_env = env; er_ret_ty = ret_ty;
         er_call_counter = call_counter; er_frames_ref = frames_ref;
-        er_varying = varying;
         er_branch_ctx = branch_ctx; er_seen_frame_names = seen;
         er_invariant_params = invariant_params; _ } = ctx
   in
@@ -5746,12 +5775,11 @@ let emit_double_call_frames ctx dd ~extra_saved ~extra_types ~make_final_handler
     @param stmt The statement to rewrite (typically a [Sreturn] statement)
     @return A list of rewritten statements (frame pushes or result assignments) *)
 let rec rewrite_enter_lambda_return ctx stmt =
-  let { er_check = check; er_varying = varying; er_tparams = tparams;
+  let { er_check = check; er_tparams = tparams;
         er_env = env; er_ret_ty = ret_ty;
         er_call_counter = call_counter; er_frames_ref = frames_ref;
-        er_varying_param_types = varying_param_types;
         er_branch_ctx = branch_ctx;
-        er_seen_frame_names = seen } = ctx
+        er_seen_frame_names = seen; _ } = ctx
   in
   match stmt with
   | Sreturn (Some e) ->
@@ -6206,12 +6234,11 @@ let rec rewrite_enter_lambda_return ctx stmt =
     @param stmts  The statement sequence to process
     @return Rewritten statement list (typically stack push operations) *)
 and rewrite_enter_stmts ctx stmts =
-  let { er_check = check; er_varying = varying; er_tparams = tparams;
+  let { er_check = check; er_tparams = tparams;
         er_env = env; er_ret_ty = ret_ty;
         er_call_counter = call_counter; er_frames_ref = frames_ref;
-        er_varying_param_types = varying_param_types;
         er_branch_ctx = branch_ctx;
-        er_seen_frame_names = seen } = ctx
+        er_seen_frame_names = seen; _ } = ctx
   in
   match stmts with
   | [] -> []
@@ -6222,8 +6249,8 @@ and rewrite_enter_stmts ctx stmts =
        [~offset] is the field offset where continuation vars start in the
        frame. [assign_expr] is the expression to assign to [id].
        [saved/types] are the frame's saved values (decomposed + continuation).
-       [enter_args] are the arguments for the _Enter push. *)
-    let make_cont_handler ~offset ~make_assign_expr ~saved ~types ~enter_args =
+       [enter] is the frame the recursive call re-enters through. *)
+    let make_cont_handler ~offset ~make_assign_expr ~saved ~types ~enter =
       let cont_vars = filter_cont_vars ~exclude_id:id rest_free
         |> List.filter (fun cid -> not (Id.Set.mem cid ctx.er_invariant_params)) in
       let cont_saved = List.map (fun cid -> CPPvar cid) cont_vars in
@@ -6258,7 +6285,7 @@ and rewrite_enter_stmts ctx stmts =
         ~saved_exprs:all_saved_conv ~env ~handler;
       [
         make_stack_push (CPPstruct_id (Id.of_string call_name, [], all_saved_conv));
-        make_stack_push (make_enter_frame enter_args);
+        make_stack_push enter;
       ]
     in
     if n_calls = 1 then
@@ -6269,7 +6296,7 @@ and rewrite_enter_stmts ctx stmts =
           ~offset:0
           ~make_assign_expr:(fun _fnames -> CPPmove (CPPvar (id_result)))
           ~saved:[] ~types:[]
-          ~enter_args:(enter_args_for ctx cs)
+          ~enter:(make_enter_for ctx cs)
       | None ->
       match decompose_single_call check e with
       | Some d ->
@@ -6281,7 +6308,7 @@ and rewrite_enter_stmts ctx stmts =
           ~make_assign_expr:(fun fnames ->
             d.d_rebuild (frame_fields_named fnames n_d) (CPPmove (CPPvar (id_result))))
           ~saved:d.d_saved ~types:d_types
-          ~enter_args:(filter_by_mask varying d.d_rec_args)
+          ~enter:(make_enter_at ctx d.d_entry d.d_rec_args)
       | None ->
         [Sasgn (id, tgt, e)] @ rewrite_enter_stmts ctx rest
     else (
@@ -6320,7 +6347,9 @@ and rewrite_enter_stmts ctx stmts =
         let n_orig_calls = List.length acd.acd_calls in
         let n_orig_saved = List.length acd.acd_saved in
         let extended_acd = {acd with acd_saved = acd.acd_saved @ cont_saved} in
-        let _ = gen_chained_call_frames ctx extended_acd in
+        (* The pushes that start the chain are the ones the generator already
+           built for [extended_acd]; only its last handler needs patching. *)
+        let pushes = gen_chained_call_frames ctx extended_acd in
         (* Patch the last generated frame to include assignment +
            continuation *)
         let frames = !frames_ref in
@@ -6358,22 +6387,7 @@ and rewrite_enter_stmts ctx stmts =
             cf_handler = patched_handler }
         in
         frames_ref := other_frames @ [patched_last];
-        (* Return the push statements for the first frame *)
-        let first_args = filter_by_mask varying (List.hd acd.acd_calls) in
-        let remaining_args =
-          List.concat_map
-            (fun args -> filter_by_mask varying args)
-            (List.tl acd.acd_calls)
-        in
-        let first_frame_saved = remaining_args @ acd.acd_saved @ cont_saved in
-        let first_frame_name =
-          (List.nth frames (List.length frames - 2)).cf_name
-        in
-        [
-          make_stack_push
-            (CPPstruct_id (Id.of_string first_frame_name, [], first_frame_saved));
-          make_stack_push (make_enter_frame first_args);
-        ]
+        pushes
       | _ ->
         [Sasgn (id, tgt, e)] @ rewrite_enter_stmts ctx rest )
   (* Conditional recursion: at least one branch has a recursive call and there
@@ -7403,9 +7417,10 @@ let transform_nontail ?(fn_name : string option) ?adopted check tparams
   let varying = find_varying_params own params body in
   let binding_env = collect_binding_env body in
   let pointer_safe = tail_pointer_safe_flags own params body ~binding_env () in
-  let varying_params = filter_by_mask varying params in
+  (* Loopifying a function on its own gives a machine with one entry: the
+     function itself, entered through [_Enter]. *)
+  let own_entry = machine_entry ~enter_id:id_enter ~params ~varying in
   let pointer_safe_varying = filter_by_mask varying pointer_safe in
-  let varying_param_types = List.map snd varying_params in
   (* Build initial type env from params and body declarations *)
   let env =
     collect_type_env body @ List.map (fun (id, ty) -> (id, ty)) params
@@ -7426,7 +7441,7 @@ let transform_nontail ?(fn_name : string option) ?adopted check tparams
      so the mask is all-true.  A capture whose type this function cannot name
      is not something a frame can carry, so the adoption is abandoned rather
      than guessed at. *)
-  let entry1 =
+  let adopted_entry =
     Option.bind adopted (fun ad ->
         let capture_params =
           List.filter_map
@@ -7435,51 +7450,42 @@ let transform_nontail ?(fn_name : string option) ?adopted check tparams
         in
         if List.length capture_params <> List.length ad.ad_captures then None
         else
-          let ps = ad.ad_params @ capture_params in
+          let params = ad.ad_params @ capture_params in
           Some
             ( ad,
-              Id.of_string ("_Enter_" ^ ad.ad_name),
-              ps,
-              List.map (fun _ -> true) ps ) )
+              machine_entry
+                ~enter_id:(Id.of_string ("_Enter_" ^ ad.ad_name))
+                ~params
+                ~varying:(List.map (fun _ -> true) params) ) )
   in
-  (* Loopifying a function on its own gives a machine with one entry: the
-     function itself, entered through [_Enter]. *)
   let entries =
-    {en_enter_id = id_enter; en_varying = varying}
-    :: ( match entry1 with
-       | Some (_, enter_id, _, en_varying) -> [{en_enter_id = enter_id; en_varying}]
-       | None -> [] )
+    own_entry
+    :: (match adopted_entry with Some (_, en) -> [en] | None -> [])
   in
   let ctx = { er_check = check; er_entries = entries;
-               er_varying = varying; er_tparams = tparams;
+               er_tparams = tparams;
                er_env = env; er_ret_ty = ret_ty;
                er_call_counter = call_counter; er_frames_ref = frames_ref;
-               er_varying_param_types = varying_param_types;
                er_branch_ctx = None;
                er_seen_frame_names = Hashtbl.create 16;
                er_invariant_params = invariant_params }
   in
   let rewritten_body = List.map (rewrite_enter_stmt ctx) body in
-  (* Entry 1's handler is the adopted fixpoint's own body, rewritten under a
-     context describing its parameters rather than this function's.  Both
-     handlers share the frame accumulator and the call counter, so the resume
-     frames either of them needs land in this one machine -- which is why this
-     runs before the frames are collected below. *)
-  let entry1_emission =
-    match entry1 with
+  (* The adopted entry's handler is that body, rewritten under a context
+     describing its parameters rather than this function's.  Both handlers
+     share the frame accumulator and the call counter, so the resume frames
+     either of them needs land in this one machine -- which is why this runs
+     before the frames are collected below. *)
+  let adopted_emission =
+    match adopted_entry with
     | None -> []
-    | Some (ad, enter_id, ps, en_varying) ->
+    | Some (ad, en) ->
       let ctx1 =
         { ctx with
-          er_varying = en_varying;
-          er_env = env @ ps;
-          er_varying_param_types = List.map snd ps;
+          er_env = env @ en.en_params;
           er_invariant_params = Id.Set.empty }
       in
-      [ { ee_id = enter_id;
-          ee_ps = List.map (fun _ -> false) ps;
-          ee_params = ps;
-          ee_body = rewrite_enter_stmts ctx1 ad.ad_body } ]
+      [entry_emission en (rewrite_enter_stmts ctx1 ad.ad_body)]
   in
   (* Sort frames by name to ensure consistent ordering *)
   let frames =
@@ -7489,12 +7495,10 @@ let transform_nontail ?(fn_name : string option) ?adopted check tparams
   let frame_ps_map =
     compute_frame_pointer_safe pointer_safe_varying frames
   in
-  (* One emission per entry point.  Loopifying a function on its own yields a
-     single one: the function itself, entered through [_Enter]. *)
+  (* One emission per entry point, in {!entries} order. *)
   let emissions =
-    {ee_id = id_enter; ee_ps = pointer_safe_varying;
-     ee_params = varying_params; ee_body = rewritten_body}
-    :: entry1_emission
+    entry_emission ~pointer_safe:pointer_safe_varying own_entry rewritten_body
+    :: adopted_emission
   in
   let ee_name ee = Id.to_string ee.ee_id in
   let all_frame_ps =
