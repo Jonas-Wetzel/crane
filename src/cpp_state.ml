@@ -450,6 +450,82 @@ let eponymous_record :
     (GlobRef.t * Miniml.record_field list * Miniml.ml_ind_packet) option ref =
   ref None
 
+(** {2 Scoped render state}
+
+    The render context proper lives in one record behind {!render_ctx}, so
+    {!with_render_ctx} restores it in full.  The state below could not join it
+    -- it is read in a dozen modules under the names it already has -- so it
+    stays in its own refs and is bracketed instead of inlined. *)
+
+(** A mutable cell a scope saves and restores, with its contents' type hidden
+    so that cells of different types can be listed together. *)
+type saver = Saver : 'a ref -> saver
+
+(** [with_saved cells f] runs [f] and puts every cell in [cells] back the way
+    it found it, however [f] leaves -- returning or raising.
+
+    The point is to name the cells a scope owns in one place.  Five of the six
+    restores this replaced were written out at the end of a branch some
+    hundreds of lines below the save, and none of them survived an
+    exception. *)
+let with_saved cells f =
+  let restores =
+    List.map
+      (fun (Saver r) ->
+        let v = !r in
+        fun () -> r := v )
+      cells
+  in
+  Fun.protect ~finally:(fun () -> List.iter (fun g -> g ()) restores) f
+
+(** The state a module frame owns: what it says is true of the module now being
+    rendered and of nothing outside it, so a nested render must not inherit it
+    and the enclosing one must get it back.
+
+    {!render_ctx} is not here -- entering a module changes it rather than merely
+    shadowing it, which is {!with_render_ctx}'s job. *)
+let module_frame_cells =
+  [
+    Saver eponymous_type_ref;
+    Saver eponymous_record;
+    Saver method_candidates;
+    Saver held_back_concepts;
+  ]
+
+(** [with_module_frame f] renders [f] as a module frame: it starts with no
+    eponymous type, no eponymous record and no method candidates of its own, and
+    leaves the enclosing frame's untouched.  [held_back_concepts] carries over,
+    since a concept the enclosing struct is holding back is still unusable
+    inside a nested one. *)
+let with_module_frame f =
+  with_saved module_frame_cells (fun () ->
+      eponymous_type_ref := None;
+      eponymous_record := None;
+      f () )
+
+(** [setting cell v f] runs [f] with [cell] holding [v] and puts the enclosing
+    contents back on the way out, however [f] leaves. *)
+let setting cell v f =
+  with_saved [Saver cell] (fun () ->
+      cell := v;
+      f () )
+
+(** [collecting acc f] runs [f] with the accumulator [acc] emptied and returns
+    what [f] pushed onto it, in push order, alongside [f]'s result.  The
+    enclosing contents are put back on the way out however [f] leaves.
+
+    An accumulator differs from the cells above in that the enclosing scope
+    wants to {e see} what the nested one produced; restoring it is not enough
+    and reading it after the restore is too late. *)
+let collecting acc f =
+  let outer = !acc in
+  acc := [];
+  Fun.protect
+    ~finally:(fun () -> acc := outer)
+    (fun () ->
+      let v = f () in
+      (List.rev !acc, v) )
+
 (* NOTE: The global method registry has moved to Method_registry. Lookups go
    through get_method_registry(). *)
 

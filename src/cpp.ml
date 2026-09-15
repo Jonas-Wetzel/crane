@@ -783,11 +783,7 @@ let rec pp_structure_elem ~is_header f = function
           using_decl ++ concept_assert_pp name m.ml_mod_type
       | MEstruct (_mp, sel) ->
         let old_context = (!render_ctx).rc_in_struct in
-        let old_eponymous = !eponymous_type_ref in
-        let old_methods = !method_candidates in
-        let old_eponymous_record = !eponymous_record in
-        eponymous_type_ref := None;
-        eponymous_record := None;
+        with_module_frame @@ fun () ->
         let module_name_str = Pp.string_of_ppcmds name in
         let lowercase_module = String.lowercase_ascii module_name_str in
         List.iter
@@ -989,11 +985,10 @@ let rec pp_structure_elem ~is_header f = function
                            ++ refine_pp
                            ++ str ";" )
                     | None ->
-                      let old_hoisted = !hoisted_concept_defs in
-                      hoisted_concept_defs := [];
-                      let def = concept_body_pp (pp_module_type [] m) in
-                      let hoisted = List.rev !hoisted_concept_defs in
-                      hoisted_concept_defs := old_hoisted;
+                      let hoisted, def =
+                        collecting hoisted_concept_defs (fun () ->
+                            concept_body_pp (pp_module_type [] m) )
+                      in
                       let main_concept = pp_concept_def modtype_name def in
                       let all = List.append hoisted [main_concept] in
                       prlist_with_sep (fun () -> fnl () ++ fnl ()) identity all
@@ -1143,19 +1138,23 @@ let rec pp_structure_elem ~is_header f = function
         let body, deferred_asserts_pp, this_method_candidates =
           with_promotion_scope @@ fun () ->
           with_render_ctx enter_module (fun () ->
-            let outer_deferred_asserts = !deferred_concept_asserts in
-            let outer_held_back = !held_back_concepts in
-            deferred_concept_asserts := [];
-            held_back_concepts := this_held_back @ outer_held_back;
-            let body = pp_module_expr ~is_header f [] m.ml_mod_expr in
-            held_back_concepts := outer_held_back;
+            let held, (body, candidates) =
+              collecting deferred_concept_asserts (fun () ->
+                  let body =
+                    setting
+                      held_back_concepts
+                      (this_held_back @ !held_back_concepts)
+                      (fun () -> pp_module_expr ~is_header f [] m.ml_mod_expr)
+                  in
+                  (body, !method_candidates) )
+            in
             (* The assertions this struct held back: those naming a concept it
                declares are emitted after it, now that both are in scope; the rest
                travel further out, qualified by this struct on the way. *)
             let mine, passed_out =
               List.partition
                 (fun (mt_mp, _, _) -> is_held_back_in this_held_back mt_mp)
-                (List.rev !deferred_concept_asserts)
+                held
             in
             let deferred_asserts_pp =
               prlist
@@ -1169,12 +1168,9 @@ let rec pp_structure_elem ~is_header f = function
                    (fun (mt_mp, concept, sub) ->
                      (mt_mp, concept, name ++ str "::" ++ sub) )
                    passed_out )
-                outer_deferred_asserts;
-            (body, deferred_asserts_pp, !method_candidates) )
+                !deferred_concept_asserts;
+            (body, deferred_asserts_pp, candidates) )
         in
-        eponymous_type_ref := old_eponymous;
-        eponymous_record := old_eponymous_record;
-        method_candidates := old_methods;
         (* Capture and clean up promotion state. *)
         let this_promoted = is_promoted in
         let this_deferred = !eponymous_deferred in
@@ -1296,18 +1292,13 @@ let rec pp_structure_elem ~is_header f = function
                   if method_fields = [] then
                     mt ()
                   else
-                    let saved_methods = !method_candidates in
-                    method_candidates := this_method_candidates;
-                    let result =
-                      prlist_with_sep
-                        fnl
-                        (fun ((_r, _, _, _), (fld, _vis, _tag)) ->
-                          pp_cpp_field (empty_env ()) fld )
-                        methods_with_refs
-                      ++ fnl ()
-                    in
-                    method_candidates := saved_methods;
-                    result
+                    setting method_candidates this_method_candidates (fun () ->
+                        prlist_with_sep
+                          fnl
+                          (fun ((_r, _, _, _), (fld, _vis, _tag)) ->
+                            pp_cpp_field (empty_env ()) fld )
+                          methods_with_refs
+                        ++ fnl () )
                 in
                 (template_str, fields_pp, methods_pp)
               | None -> (mt (), mt (), mt ())
@@ -1448,11 +1439,10 @@ let rec pp_structure_elem ~is_header f = function
             ++ refine_pp
             ++ str ";" )
         | None ->
-          let old_hoisted = !hoisted_concept_defs in
-          hoisted_concept_defs := [];
-          let def = concept_body_pp (pp_module_type [] m) in
-          let hoisted = List.rev !hoisted_concept_defs in
-          hoisted_concept_defs := old_hoisted;
+          let hoisted, def =
+            collecting hoisted_concept_defs (fun () ->
+                concept_body_pp (pp_module_type [] m) )
+          in
           let hoisted_pp =
             if hoisted = [] then
               mt ()

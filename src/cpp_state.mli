@@ -233,6 +233,24 @@ val eponymous_record :
   (Names.GlobRef.t * Miniml.record_field list * Miniml.ml_ind_packet)
   option ref
 
+(** {2 Scoped render state} *)
+
+(** [with_module_frame f] renders [f] as a module frame: it starts with no
+    eponymous type, no eponymous record and no method candidates of its own, and
+    leaves the enclosing frame's untouched, however [f] leaves -- returning or
+    raising.  [held_back_concepts] carries over, since a concept the enclosing
+    struct is holding back is still unusable inside a nested one. *)
+val with_module_frame : (unit -> 'a) -> 'a
+
+(** [setting cell v f] runs [f] with [cell] holding [v] and puts the enclosing
+    contents back on the way out, however [f] leaves -- returning or raising. *)
+val setting : 'a ref -> 'a -> (unit -> 'b) -> 'b
+
+(** [collecting acc f] runs [f] with the accumulator [acc] emptied and returns
+    what [f] pushed onto it, in push order, alongside [f]'s result.  The
+    enclosing contents are put back on the way out however [f] leaves. *)
+val collecting : 'a list ref -> (unit -> 'b) -> 'a list * 'b
+
 (** {2 std:: names} *)
 
 (** Configurable names for the [std::] symbols emitted by the extractor. *)
