@@ -1190,18 +1190,55 @@ std::pair<uint64_t, uint64_t> LoopifyTrees::tree_min_max(
 /// all_paths_sum t sums all root-to-leaf path sums.
 uint64_t LoopifyTrees::all_paths_sum(const LoopifyTrees::tree<uint64_t> &t) {
   auto sum_with_acc_impl =
-      [](auto &_self_sum_with_acc, uint64_t acc,
-         const LoopifyTrees::tree<uint64_t> &tree0) -> uint64_t {
-    if (std::holds_alternative<typename LoopifyTrees::tree<uint64_t>::Leaf>(
-            tree0.v())) {
-      return acc;
-    } else {
-      const auto &[a0, a1, a2] =
-          std::get<typename LoopifyTrees::tree<uint64_t>::Node>(tree0.v());
-      uint64_t new_acc = (acc + a1);
-      return (_self_sum_with_acc(_self_sum_with_acc, new_acc, *a0) +
-              _self_sum_with_acc(_self_sum_with_acc, new_acc, *a2));
+      [&](auto &, uint64_t acc,
+          const LoopifyTrees::tree<uint64_t> &tree0) -> uint64_t {
+    /// _Enter: captures varying parameters for each recursive call.
+    struct _Enter {
+      const LoopifyTrees::tree<uint64_t> *tree0;
+      uint64_t acc;
+    };
+    /// _After_Node: saves [a0, new_acc], dispatches next recursive call.
+    struct _After_Node {
+      const LoopifyTrees::tree<uint64_t> *a0;
+      uint64_t new_acc;
+    };
+    /// _Combine_Node: receives partial results, combines with _result from
+    /// final call.
+    struct _Combine_Node {
+      uint64_t _result;
+    };
+    using _Frame = std::variant<_Enter, _After_Node, _Combine_Node>;
+    uint64_t _result{};
+    crane::small_vector<_Frame> _stack;
+    _stack.emplace_back(_Enter{&tree0, acc});
+    /// Loopified sum_with_acc: _Enter -> _After_Node -> _Combine_Node.
+    while (!_stack.empty()) {
+      _Frame _frame = std::move(_stack.back());
+      _stack.pop_back();
+      if (std::holds_alternative<_Enter>(_frame)) {
+        auto _f = std::move(std::get<_Enter>(_frame));
+        const LoopifyTrees::tree<uint64_t> &tree0 = *_f.tree0;
+        uint64_t acc = _f.acc;
+        if (std::holds_alternative<typename LoopifyTrees::tree<uint64_t>::Leaf>(
+                tree0.v())) {
+          _result = std::move(acc);
+        } else {
+          const auto &[a0, a1, a2] =
+              std::get<typename LoopifyTrees::tree<uint64_t>::Node>(tree0.v());
+          uint64_t new_acc = (acc + a1);
+          _stack.emplace_back(_After_Node{crane_raw(a0), new_acc});
+          _stack.emplace_back(_Enter{crane_raw(a2), new_acc});
+        }
+      } else if (std::holds_alternative<_After_Node>(_frame)) {
+        auto _f = std::move(std::get<_After_Node>(_frame));
+        _stack.emplace_back(_Combine_Node{std::move(_result)});
+        _stack.emplace_back(_Enter{_f.a0, _f.new_acc});
+      } else {
+        auto _f = std::move(std::get<_Combine_Node>(_frame));
+        _result = (std::move(_result) + std::move(_f._result));
+      }
     }
+    return _result;
   };
   auto sum_with_acc =
       [&](uint64_t acc, const LoopifyTrees::tree<uint64_t> &tree0) -> uint64_t {

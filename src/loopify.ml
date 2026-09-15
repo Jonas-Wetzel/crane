@@ -7711,7 +7711,8 @@ let loopify_inner_lambdas ~tparams body =
     | Some self_id -> (
       let check = self_checker self_id in
       match classify check lbody with
-      | Tail_recursion ->
+      | No_recursion -> None
+      | (Tail_recursion | Nontail_recursion) as kind ->
         (* Loop params = all params except the trailing self-param. *)
         let loop_lparams =
           match List.rev lparams with _ :: rest -> List.rev rest | [] -> []
@@ -7723,12 +7724,30 @@ let loopify_inner_lambdas ~tparams body =
             loop_lparams
         in
         let ret_ty = match ret_ty_opt with Some ty -> ty | None -> Tvoid in
-        let body' = transform_tail check params ret_ty lbody in
+        (* The fixpoint's own name, recovered from its self-parameter, so the
+           frame structs a non-tail transform emits are named after it. *)
+        let name =
+          let s = Id.to_string self_id in
+          String.sub s
+            (String.length self_param_prefix)
+            (String.length s - String.length self_param_prefix)
+        in
+        let body' =
+          match kind with
+          | Tail_recursion ->
+            report_outcome ~name ~check ~strategy:Lp_tail
+              (transform_tail check params ret_ty lbody)
+          | Nontail_recursion ->
+            report_outcome ~name ~check ~strategy:Lp_frame
+              (transform_nontail ~fn_name:name check tparams params ret_ty
+                 lbody)
+          | No_recursion ->
+            CErrors.anomaly (Pp.str "loopify: No_recursion cannot appear here")
+        in
         (* Params the loop body no longer mentions keep their names here; the
            lambda printer drops the name of any param its body does not
            reference, so unused ones do not trip [-Wunused-parameter]. *)
-        Some (lparams, body')
-      | No_recursion | Nontail_recursion -> None )
+        Some (lparams, body') )
   in
   let rec process_stmts stmts =
     match stmts with

@@ -367,22 +367,50 @@ bool LoopifySearchOpt::binary_search_fuel(uint64_t fuel, uint64_t target,
           };
           mid_val = nth(mid, _loop_l);
           List<uint64_t> left;
-          auto take_impl = [](auto &_self_take, uint64_t n,
-                              const List<uint64_t> &xs) -> List<uint64_t> {
-            if (n <= 0) {
-              return List<uint64_t>::nil();
-            } else {
-              uint64_t n_ = n - 1;
-              if (std::holds_alternative<typename List<uint64_t>::Nil>(
-                      xs.v())) {
-                return List<uint64_t>::nil();
+          auto take_impl = [&](auto &, uint64_t n,
+                               const List<uint64_t> &xs) -> List<uint64_t> {
+            /// _Enter: captures varying parameters for each recursive call.
+            struct _Enter {
+              const List<uint64_t> *xs;
+              uint64_t n;
+            };
+            /// _Resume_Cons: saves [a03], resumes after recursive call with
+            /// _result.
+            struct _Resume_Cons {
+              uint64_t a03;
+            };
+            using _Frame = std::variant<_Enter, _Resume_Cons>;
+            List<uint64_t> _result{};
+            crane::small_vector<_Frame> _stack;
+            _stack.emplace_back(_Enter{&xs, n});
+            /// Loopified take: _Enter -> _Resume_Cons.
+            while (!_stack.empty()) {
+              _Frame _frame = std::move(_stack.back());
+              _stack.pop_back();
+              if (std::holds_alternative<_Enter>(_frame)) {
+                auto _f = std::move(std::get<_Enter>(_frame));
+                const List<uint64_t> &xs = *_f.xs;
+                uint64_t n = _f.n;
+                if (n <= 0) {
+                  _result = List<uint64_t>::nil();
+                } else {
+                  uint64_t n_ = n - 1;
+                  if (std::holds_alternative<typename List<uint64_t>::Nil>(
+                          xs.v())) {
+                    _result = List<uint64_t>::nil();
+                  } else {
+                    const auto &[a03, a13] =
+                        std::get<typename List<uint64_t>::Cons>(xs.v());
+                    _stack.emplace_back(_Resume_Cons{a03});
+                    _stack.emplace_back(_Enter{crane_raw(a13), n_});
+                  }
+                }
               } else {
-                const auto &[a03, a13] =
-                    std::get<typename List<uint64_t>::Cons>(xs.v());
-                return List<uint64_t>::cons(a03,
-                                            _self_take(_self_take, n_, *a13));
+                auto _f = std::move(std::get<_Resume_Cons>(_frame));
+                _result = List<uint64_t>::cons(_f.a03, std::move(_result));
               }
             }
+            return _result;
           };
           auto take = [&](uint64_t n,
                           const List<uint64_t> &xs) -> List<uint64_t> {

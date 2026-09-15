@@ -209,14 +209,43 @@ struct LoopifySequences {
       return List<T1>::nil();
     } else {
       const auto &[a0, a1] = std::get<typename List<T1>::Cons>(l.v());
-      auto go_impl = [&](auto &_self_go, const List<T1> &rest) -> List<T1> {
-        if (std::holds_alternative<typename List<T1>::Nil>(rest.v())) {
-          return List<T1>::nil();
-        } else {
-          const auto &[a00, a10] = std::get<typename List<T1>::Cons>(rest.v());
-          return List<T1>::cons(sep,
-                                List<T1>::cons(a00, _self_go(_self_go, *a10)));
+      auto go_impl = [&](auto &, const List<T1> &rest) -> List<T1> {
+        /// _Enter: captures varying parameters for each recursive call.
+        struct _Enter {
+          const List<T1> *rest;
+        };
+        /// _Resume_Cons: saves [sep, a00], resumes after recursive call with
+        /// _result.
+        struct _Resume_Cons {
+          std::decay_t<decltype(sep)> sep;
+          std::decay_t<T1> a00;
+        };
+        using _Frame = std::variant<_Enter, _Resume_Cons>;
+        List<T1> _result{};
+        crane::small_vector<_Frame> _stack;
+        _stack.emplace_back(_Enter{&rest});
+        /// Loopified go: _Enter -> _Resume_Cons.
+        while (!_stack.empty()) {
+          _Frame _frame = std::move(_stack.back());
+          _stack.pop_back();
+          if (std::holds_alternative<_Enter>(_frame)) {
+            auto _f = std::move(std::get<_Enter>(_frame));
+            const List<T1> &rest = *_f.rest;
+            if (std::holds_alternative<typename List<T1>::Nil>(rest.v())) {
+              _result = List<T1>::nil();
+            } else {
+              const auto &[a00, a10] =
+                  std::get<typename List<T1>::Cons>(rest.v());
+              _stack.emplace_back(_Resume_Cons{sep, a00});
+              _stack.emplace_back(_Enter{crane_raw(a10)});
+            }
+          } else {
+            auto _f = std::move(std::get<_Resume_Cons>(_frame));
+            _result = List<T1>::cons(
+                _f.sep, List<T1>::cons(std::move(_f.a00), std::move(_result)));
+          }
         }
+        return _result;
       };
       auto go = [&](const List<T1> &rest) -> List<T1> {
         return go_impl(go_impl, rest);
@@ -263,42 +292,97 @@ struct LoopifySequences {
           *_write = std::make_shared<List<List<T1>>>(List<List<T1>>::nil());
           break;
         } else {
-          auto heads_impl = [](auto &_self_heads,
-                               const List<List<T1>> &l) -> List<T1> {
-            if (std::holds_alternative<typename List<List<T1>>::Nil>(l.v())) {
-              return List<List<T1>>::nil();
-            } else {
-              const auto &[a00, a10] =
-                  std::get<typename List<List<T1>>::Cons>(l.v());
-              if (std::holds_alternative<typename List<T1>::Nil>(a00.v())) {
-                return _self_heads(_self_heads, *a10);
+          auto heads_impl = [&](auto &, const List<List<T1>> &l) -> List<T1> {
+            /// _Enter: captures varying parameters for each recursive call.
+            struct _Enter {
+              const List<List<T1>> *l;
+            };
+            /// _Resume_Cons: saves [a01], resumes after recursive call with
+            /// _result.
+            struct _Resume_Cons {
+              std::decay_t<T1> a01;
+            };
+            using _Frame = std::variant<_Enter, _Resume_Cons>;
+            List<T1> _result{};
+            crane::small_vector<_Frame> _stack;
+            _stack.emplace_back(_Enter{&l});
+            /// Loopified heads: _Enter -> _Resume_Cons.
+            while (!_stack.empty()) {
+              _Frame _frame = std::move(_stack.back());
+              _stack.pop_back();
+              if (std::holds_alternative<_Enter>(_frame)) {
+                auto _f = std::move(std::get<_Enter>(_frame));
+                const List<List<T1>> &l = *_f.l;
+                if (std::holds_alternative<typename List<List<T1>>::Nil>(
+                        l.v())) {
+                  _result = List<List<T1>>::nil();
+                } else {
+                  const auto &[a00, a10] =
+                      std::get<typename List<List<T1>>::Cons>(l.v());
+                  if (std::holds_alternative<typename List<T1>::Nil>(a00.v())) {
+                    _stack.emplace_back(_Enter{crane_raw(a10)});
+                  } else {
+                    const auto &[a01, a11] =
+                        std::get<typename List<T1>::Cons>(a00.v());
+                    _stack.emplace_back(_Resume_Cons{a01});
+                    _stack.emplace_back(_Enter{crane_raw(a10)});
+                  }
+                }
               } else {
-                const auto &[a01, a11] =
-                    std::get<typename List<T1>::Cons>(a00.v());
-                return List<List<T1>>::cons(a01,
-                                            _self_heads(_self_heads, *a10));
+                auto _f = std::move(std::get<_Resume_Cons>(_frame));
+                _result =
+                    List<List<T1>>::cons(std::move(_f.a01), std::move(_result));
               }
             }
+            return _result;
           };
           auto heads = [&](const List<List<T1>> &l) -> List<T1> {
             return heads_impl(heads_impl, l);
           };
-          auto tails_impl = [](auto &_self_tails,
-                               const List<List<T1>> &l) -> List<List<T1>> {
-            if (std::holds_alternative<typename List<List<T1>>::Nil>(l.v())) {
-              return List<List<T1>>::nil();
-            } else {
-              const auto &[a01, a11] =
-                  std::get<typename List<List<T1>>::Cons>(l.v());
-              if (std::holds_alternative<typename List<T1>::Nil>(a01.v())) {
-                return _self_tails(_self_tails, *a11);
+          auto tails_impl = [&](auto &,
+                                const List<List<T1>> &l) -> List<List<T1>> {
+            /// _Enter: captures varying parameters for each recursive call.
+            struct _Enter {
+              const List<List<T1>> *l;
+            };
+            /// _Resume_Cons: saves [a12], resumes after recursive call with
+            /// _result.
+            struct _Resume_Cons {
+              List<T1> a12;
+            };
+            using _Frame = std::variant<_Enter, _Resume_Cons>;
+            List<List<T1>> _result{};
+            crane::small_vector<_Frame> _stack;
+            _stack.emplace_back(_Enter{&l});
+            /// Loopified tails: _Enter -> _Resume_Cons.
+            while (!_stack.empty()) {
+              _Frame _frame = std::move(_stack.back());
+              _stack.pop_back();
+              if (std::holds_alternative<_Enter>(_frame)) {
+                auto _f = std::move(std::get<_Enter>(_frame));
+                const List<List<T1>> &l = *_f.l;
+                if (std::holds_alternative<typename List<List<T1>>::Nil>(
+                        l.v())) {
+                  _result = List<List<T1>>::nil();
+                } else {
+                  const auto &[a01, a11] =
+                      std::get<typename List<List<T1>>::Cons>(l.v());
+                  if (std::holds_alternative<typename List<T1>::Nil>(a01.v())) {
+                    _stack.emplace_back(_Enter{crane_raw(a11)});
+                  } else {
+                    const auto &[a02, a12] =
+                        std::get<typename List<T1>::Cons>(a01.v());
+                    _stack.emplace_back(_Resume_Cons{*a12});
+                    _stack.emplace_back(_Enter{crane_raw(a11)});
+                  }
+                }
               } else {
-                const auto &[a02, a12] =
-                    std::get<typename List<T1>::Cons>(a01.v());
-                return List<List<T1>>::cons(*a12,
-                                            _self_tails(_self_tails, *a11));
+                auto _f = std::move(std::get<_Resume_Cons>(_frame));
+                _result =
+                    List<List<T1>>::cons(std::move(_f.a12), std::move(_result));
               }
             }
+            return _result;
           };
           auto tails = [&](const List<List<T1>> &l) -> List<List<T1>> {
             return tails_impl(tails_impl, l);

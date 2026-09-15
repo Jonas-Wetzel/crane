@@ -219,14 +219,45 @@ struct LoopifyListGenerators {
     } else {
       uint64_t n_ = n - 1;
       return List<uint64_t>::cons(f(UINT64_C(0)), [&]() {
-        auto go_impl = [&](auto &_self_go, uint64_t i) -> List<uint64_t> {
-          if (i <= 0) {
-            return List<uint64_t>::nil();
-          } else {
-            uint64_t i_ = i - 1;
-            return List<uint64_t>::cons(f((((n - i) > n ? 0 : (n - i)))),
-                                        _self_go(_self_go, i_));
+        auto go_impl = [&](auto &, uint64_t i) -> List<uint64_t> {
+          /// _Enter: captures varying parameters for each recursive call.
+          struct _Enter {
+            uint64_t i;
+          };
+          /// _Resume_i_: saves [_s0], resumes after recursive call with
+          /// _result.
+          struct _Resume_i_ {
+            std::decay_t<decltype(f(
+                (((n - std::declval<uint64_t &>()) > n
+                      ? 0
+                      : (n - std::declval<uint64_t &>())))))>
+                _s0;
+          };
+          using _Frame = std::variant<_Enter, _Resume_i_>;
+          List<uint64_t> _result{};
+          crane::small_vector<_Frame> _stack;
+          _stack.emplace_back(_Enter{i});
+          /// Loopified go: _Enter -> _Resume_i_.
+          while (!_stack.empty()) {
+            _Frame _frame = std::move(_stack.back());
+            _stack.pop_back();
+            if (std::holds_alternative<_Enter>(_frame)) {
+              auto _f = std::move(std::get<_Enter>(_frame));
+              uint64_t i = _f.i;
+              if (i <= 0) {
+                _result = List<uint64_t>::nil();
+              } else {
+                uint64_t i_ = i - 1;
+                _stack.emplace_back(
+                    _Resume_i_{f((((n - i) > n ? 0 : (n - i))))});
+                _stack.emplace_back(_Enter{i_});
+              }
+            } else {
+              auto _f = std::move(std::get<_Resume_i_>(_frame));
+              _result = List<uint64_t>::cons(_f._s0, std::move(_result));
+            }
           }
+          return _result;
         };
         auto go = [&](uint64_t i) -> List<uint64_t> {
           return go_impl(go_impl, i);
@@ -247,14 +278,42 @@ struct LoopifyListGenerators {
       return List<uint64_t>::nil();
     } else {
       uint64_t n_ = n - 1;
-      auto aux_impl = [&](auto &_self_aux, uint64_t idx) -> List<uint64_t> {
-        if (idx <= 0) {
-          return List<uint64_t>::cons(f(UINT64_C(0)), List<uint64_t>::nil());
-        } else {
-          uint64_t idx_ = idx - 1;
-          return _self_aux(_self_aux, idx_)
-              .app(List<uint64_t>::cons(f(idx), List<uint64_t>::nil()));
+      auto aux_impl = [&](auto &, uint64_t idx) -> List<uint64_t> {
+        /// _Enter: captures varying parameters for each recursive call.
+        struct _Enter {
+          uint64_t idx;
+        };
+        /// _Resume_idx_: saves [_s0], resumes after recursive call with
+        /// _result.
+        struct _Resume_idx_ {
+          List<uint64_t> _s0;
+        };
+        using _Frame = std::variant<_Enter, _Resume_idx_>;
+        List<uint64_t> _result{};
+        crane::small_vector<_Frame> _stack;
+        _stack.emplace_back(_Enter{idx});
+        /// Loopified aux: _Enter -> _Resume_idx_.
+        while (!_stack.empty()) {
+          _Frame _frame = std::move(_stack.back());
+          _stack.pop_back();
+          if (std::holds_alternative<_Enter>(_frame)) {
+            auto _f = std::move(std::get<_Enter>(_frame));
+            uint64_t idx = _f.idx;
+            if (idx <= 0) {
+              _result =
+                  List<uint64_t>::cons(f(UINT64_C(0)), List<uint64_t>::nil());
+            } else {
+              uint64_t idx_ = idx - 1;
+              _stack.emplace_back(_Resume_idx_{
+                  List<uint64_t>::cons(f(idx), List<uint64_t>::nil())});
+              _stack.emplace_back(_Enter{idx_});
+            }
+          } else {
+            auto _f = std::move(std::get<_Resume_idx_>(_frame));
+            _result = std::move(_result).app(std::move(_f._s0));
+          }
         }
+        return _result;
       };
       auto aux = [&](uint64_t idx) -> List<uint64_t> {
         return aux_impl(aux_impl, idx);

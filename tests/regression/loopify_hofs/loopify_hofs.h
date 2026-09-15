@@ -337,16 +337,42 @@ struct LoopifyHofs {
       if (std::holds_alternative<_Enter>(_frame)) {
         auto _f = std::move(std::get<_Enter>(_frame));
         const List<T1> &l1 = *_f.l1;
-        auto pair_with_impl = [](auto &_self_pair_with, T1 x,
-                                 const List<T2> &l) -> List<std::pair<T1, T2>> {
-          if (std::holds_alternative<typename List<T2>::Nil>(l.v())) {
-            return List<std::pair<T1, T2>>::nil();
-          } else {
-            const auto &[a0, a1] = std::get<typename List<T2>::Cons>(l.v());
-            return List<std::pair<T1, T2>>::cons(
-                std::make_pair(x, a0),
-                _self_pair_with(_self_pair_with, x, *a1));
+        auto pair_with_impl =
+            [&](auto &, T1 x, const List<T2> &l) -> List<std::pair<T1, T2>> {
+          /// _Enter: captures varying parameters for each recursive call.
+          struct _Enter {
+            const List<T2> *l;
+          };
+          /// _Resume_Cons: saves [_s0], resumes after recursive call with
+          /// _result.
+          struct _Resume_Cons {
+            std::pair<T1, T2> _s0;
+          };
+          using _Frame = std::variant<_Enter, _Resume_Cons>;
+          List<std::pair<T1, T2>> _result{};
+          crane::small_vector<_Frame> _stack;
+          _stack.emplace_back(_Enter{&l});
+          /// Loopified pair_with: _Enter -> _Resume_Cons.
+          while (!_stack.empty()) {
+            _Frame _frame = std::move(_stack.back());
+            _stack.pop_back();
+            if (std::holds_alternative<_Enter>(_frame)) {
+              auto _f = std::move(std::get<_Enter>(_frame));
+              const List<T2> &l = *_f.l;
+              if (std::holds_alternative<typename List<T2>::Nil>(l.v())) {
+                _result = List<std::pair<T1, T2>>::nil();
+              } else {
+                const auto &[a0, a1] = std::get<typename List<T2>::Cons>(l.v());
+                _stack.emplace_back(_Resume_Cons{std::make_pair(x, a0)});
+                _stack.emplace_back(_Enter{crane_raw(a1)});
+              }
+            } else {
+              auto _f = std::move(std::get<_Resume_Cons>(_frame));
+              _result = List<std::pair<T1, T2>>::cons(std::move(_f._s0),
+                                                      std::move(_result));
+            }
           }
+          return _result;
         };
         auto pair_with = [&](T1 x,
                              const List<T2> &l) -> List<std::pair<T1, T2>> {

@@ -278,18 +278,43 @@ List<List<uint64_t>> LoopifyCombinatorics::subsequences(
       uint64_t a0 = _f.a0;
       List<List<uint64_t>> rest = std::move(_result);
       auto map_prepend_impl =
-          [&](auto &_self_map_prepend,
-              const List<List<uint64_t>> &lst) -> List<List<uint64_t>> {
-        if (std::holds_alternative<typename List<List<uint64_t>>::Nil>(
-                lst.v())) {
-          return List<List<uint64_t>>::nil();
-        } else {
-          const auto &[a00, a10] =
-              std::get<typename List<List<uint64_t>>::Cons>(lst.v());
-          return List<List<uint64_t>>::cons(
-              List<uint64_t>::cons(a0, a00),
-              _self_map_prepend(_self_map_prepend, *a10));
+          [&](auto &, const List<List<uint64_t>> &lst) -> List<List<uint64_t>> {
+        /// _Enter: captures varying parameters for each recursive call.
+        struct _Enter {
+          const List<List<uint64_t>> *lst;
+        };
+        /// _Resume_Cons: saves [_s0], resumes after recursive call with
+        /// _result.
+        struct _Resume_Cons {
+          List<uint64_t> _s0;
+        };
+        using _Frame = std::variant<_Enter, _Resume_Cons>;
+        List<List<uint64_t>> _result{};
+        crane::small_vector<_Frame> _stack;
+        _stack.emplace_back(_Enter{&lst});
+        /// Loopified map_prepend: _Enter -> _Resume_Cons.
+        while (!_stack.empty()) {
+          _Frame _frame = std::move(_stack.back());
+          _stack.pop_back();
+          if (std::holds_alternative<_Enter>(_frame)) {
+            auto _f = std::move(std::get<_Enter>(_frame));
+            const List<List<uint64_t>> &lst = *_f.lst;
+            if (std::holds_alternative<typename List<List<uint64_t>>::Nil>(
+                    lst.v())) {
+              _result = List<List<uint64_t>>::nil();
+            } else {
+              const auto &[a00, a10] =
+                  std::get<typename List<List<uint64_t>>::Cons>(lst.v());
+              _stack.emplace_back(_Resume_Cons{List<uint64_t>::cons(a0, a00)});
+              _stack.emplace_back(_Enter{crane_raw(a10)});
+            }
+          } else {
+            auto _f = std::move(std::get<_Resume_Cons>(_frame));
+            _result = List<List<uint64_t>>::cons(std::move(_f._s0),
+                                                 std::move(_result));
+          }
         }
+        return _result;
       };
       auto map_prepend =
           [&](const List<List<uint64_t>> &lst) -> List<List<uint64_t>> {
@@ -408,18 +433,43 @@ List<List<uint64_t>> LoopifyCombinatorics::power_set(
       uint64_t a0 = _f.a0;
       List<List<uint64_t>> rest = std::move(_result);
       auto map_add_x_impl =
-          [&](auto &_self_map_add_x,
-              const List<List<uint64_t>> &lst) -> List<List<uint64_t>> {
-        if (std::holds_alternative<typename List<List<uint64_t>>::Nil>(
-                lst.v())) {
-          return List<List<uint64_t>>::nil();
-        } else {
-          const auto &[a00, a10] =
-              std::get<typename List<List<uint64_t>>::Cons>(lst.v());
-          return List<List<uint64_t>>::cons(
-              List<uint64_t>::cons(a0, a00),
-              _self_map_add_x(_self_map_add_x, *a10));
+          [&](auto &, const List<List<uint64_t>> &lst) -> List<List<uint64_t>> {
+        /// _Enter: captures varying parameters for each recursive call.
+        struct _Enter {
+          const List<List<uint64_t>> *lst;
+        };
+        /// _Resume_Cons: saves [_s0], resumes after recursive call with
+        /// _result.
+        struct _Resume_Cons {
+          List<uint64_t> _s0;
+        };
+        using _Frame = std::variant<_Enter, _Resume_Cons>;
+        List<List<uint64_t>> _result{};
+        crane::small_vector<_Frame> _stack;
+        _stack.emplace_back(_Enter{&lst});
+        /// Loopified map_add_x: _Enter -> _Resume_Cons.
+        while (!_stack.empty()) {
+          _Frame _frame = std::move(_stack.back());
+          _stack.pop_back();
+          if (std::holds_alternative<_Enter>(_frame)) {
+            auto _f = std::move(std::get<_Enter>(_frame));
+            const List<List<uint64_t>> &lst = *_f.lst;
+            if (std::holds_alternative<typename List<List<uint64_t>>::Nil>(
+                    lst.v())) {
+              _result = List<List<uint64_t>>::nil();
+            } else {
+              const auto &[a00, a10] =
+                  std::get<typename List<List<uint64_t>>::Cons>(lst.v());
+              _stack.emplace_back(_Resume_Cons{List<uint64_t>::cons(a0, a00)});
+              _stack.emplace_back(_Enter{crane_raw(a10)});
+            }
+          } else {
+            auto _f = std::move(std::get<_Resume_Cons>(_frame));
+            _result = List<List<uint64_t>>::cons(std::move(_f._s0),
+                                                 std::move(_result));
+          }
         }
+        return _result;
       };
       auto map_add_x =
           [&](const List<List<uint64_t>> &lst) -> List<List<uint64_t>> {
@@ -474,18 +524,44 @@ List<List<uint64_t>> LoopifyCombinatorics::insert_everywhere(
       List<uint64_t> l = std::move(_f.l);
       List<List<uint64_t>> rest = std::move(_result);
       auto prepend_y_impl =
-          [&](auto &_self_prepend_y,
+          [&](auto &,
               const List<List<uint64_t>> &lsts) -> List<List<uint64_t>> {
-        if (std::holds_alternative<typename List<List<uint64_t>>::Nil>(
-                lsts.v())) {
-          return List<List<uint64_t>>::nil();
-        } else {
-          const auto &[a00, a10] =
-              std::get<typename List<List<uint64_t>>::Cons>(lsts.v());
-          return List<List<uint64_t>>::cons(
-              List<uint64_t>::cons(a0, a00),
-              _self_prepend_y(_self_prepend_y, *a10));
+        /// _Enter: captures varying parameters for each recursive call.
+        struct _Enter {
+          const List<List<uint64_t>> *lsts;
+        };
+        /// _Resume_Cons: saves [_s0], resumes after recursive call with
+        /// _result.
+        struct _Resume_Cons {
+          List<uint64_t> _s0;
+        };
+        using _Frame = std::variant<_Enter, _Resume_Cons>;
+        List<List<uint64_t>> _result{};
+        crane::small_vector<_Frame> _stack;
+        _stack.emplace_back(_Enter{&lsts});
+        /// Loopified prepend_y: _Enter -> _Resume_Cons.
+        while (!_stack.empty()) {
+          _Frame _frame = std::move(_stack.back());
+          _stack.pop_back();
+          if (std::holds_alternative<_Enter>(_frame)) {
+            auto _f = std::move(std::get<_Enter>(_frame));
+            const List<List<uint64_t>> &lsts = *_f.lsts;
+            if (std::holds_alternative<typename List<List<uint64_t>>::Nil>(
+                    lsts.v())) {
+              _result = List<List<uint64_t>>::nil();
+            } else {
+              const auto &[a00, a10] =
+                  std::get<typename List<List<uint64_t>>::Cons>(lsts.v());
+              _stack.emplace_back(_Resume_Cons{List<uint64_t>::cons(a0, a00)});
+              _stack.emplace_back(_Enter{crane_raw(a10)});
+            }
+          } else {
+            auto _f = std::move(std::get<_Resume_Cons>(_frame));
+            _result = List<List<uint64_t>>::cons(std::move(_f._s0),
+                                                 std::move(_result));
+          }
         }
+        return _result;
       };
       auto prepend_y =
           [&](const List<List<uint64_t>> &lsts) -> List<List<uint64_t>> {

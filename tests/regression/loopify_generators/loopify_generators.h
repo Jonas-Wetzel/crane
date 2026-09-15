@@ -246,14 +246,42 @@ struct LoopifyGenerators {
   template <typename F1>
     requires std::is_invocable_r_v<uint64_t, F1 &, uint64_t &>
   static List<uint64_t> tabulate(uint64_t n, F1 &&f) {
-    auto go_impl = [&](auto &_self_go, uint64_t i) -> List<uint64_t> {
-      if (i <= 0) {
-        return List<uint64_t>::nil();
-      } else {
-        uint64_t j = i - 1;
-        return List<uint64_t>::cons(f((((n - i) > n ? 0 : (n - i)))),
-                                    _self_go(_self_go, j));
+    auto go_impl = [&](auto &, uint64_t i) -> List<uint64_t> {
+      /// _Enter: captures varying parameters for each recursive call.
+      struct _Enter {
+        uint64_t i;
+      };
+      /// _Resume_j: saves [_s0], resumes after recursive call with _result.
+      struct _Resume_j {
+        std::decay_t<decltype(f((((n - std::declval<uint64_t &>()) > n
+                                      ? 0
+                                      : (n - std::declval<uint64_t &>())))))>
+            _s0;
+      };
+      using _Frame = std::variant<_Enter, _Resume_j>;
+      List<uint64_t> _result{};
+      crane::small_vector<_Frame> _stack;
+      _stack.emplace_back(_Enter{i});
+      /// Loopified go: _Enter -> _Resume_j.
+      while (!_stack.empty()) {
+        _Frame _frame = std::move(_stack.back());
+        _stack.pop_back();
+        if (std::holds_alternative<_Enter>(_frame)) {
+          auto _f = std::move(std::get<_Enter>(_frame));
+          uint64_t i = _f.i;
+          if (i <= 0) {
+            _result = List<uint64_t>::nil();
+          } else {
+            uint64_t j = i - 1;
+            _stack.emplace_back(_Resume_j{f((((n - i) > n ? 0 : (n - i))))});
+            _stack.emplace_back(_Enter{j});
+          }
+        } else {
+          auto _f = std::move(std::get<_Resume_j>(_frame));
+          _result = List<uint64_t>::cons(_f._s0, std::move(_result));
+        }
       }
+      return _result;
     };
     auto go = [&](uint64_t i) -> List<uint64_t> { return go_impl(go_impl, i); };
     return go(n);

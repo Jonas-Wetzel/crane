@@ -274,16 +274,57 @@ uint64_t MemSafetyProbe8::tree_flatten(
 /// TEST 6: Pass tree as a higher-order function argument
 /// to prevent methodification completely.
 uint64_t MemSafetyProbe8::tree_size_via_fold(const MemSafetyProbe8::tree &t) {
-  auto go_impl = [](auto &_self_go, uint64_t,
-                    const MemSafetyProbe8::tree &t0) -> uint64_t {
-    if (std::holds_alternative<typename MemSafetyProbe8::tree::Leaf>(t0.v())) {
-      return UINT64_C(0);
-    } else {
-      const auto &[a0, a1, a2] =
-          std::get<typename MemSafetyProbe8::tree::Node>(t0.v());
-      return ((UINT64_C(1) + _self_go(_self_go, UINT64_C(0), *a0)) +
-              _self_go(_self_go, UINT64_C(0), *a2));
+  auto go_impl = [&](auto &, uint64_t _x,
+                     const MemSafetyProbe8::tree &t0) -> uint64_t {
+    /// _Enter: captures varying parameters for each recursive call.
+    struct _Enter {
+      const MemSafetyProbe8::tree *t0;
+      uint64_t _x;
+    };
+    /// _After_Node: saves [a0, _s1, _s2], dispatches next recursive call.
+    struct _After_Node {
+      const MemSafetyProbe8::tree *a0;
+      uint64_t _s1;
+      uint64_t _s2;
+    };
+    /// _Combine_Node: receives partial results, combines with _result from
+    /// final call.
+    struct _Combine_Node {
+      uint64_t _result;
+      uint64_t _s1;
+    };
+    using _Frame = std::variant<_Enter, _After_Node, _Combine_Node>;
+    uint64_t _result{};
+    crane::small_vector<_Frame> _stack;
+    _stack.emplace_back(_Enter{&t0, _x});
+    /// Loopified go: _Enter -> _After_Node -> _Combine_Node.
+    while (!_stack.empty()) {
+      _Frame _frame = std::move(_stack.back());
+      _stack.pop_back();
+      if (std::holds_alternative<_Enter>(_frame)) {
+        auto _f = std::move(std::get<_Enter>(_frame));
+        const MemSafetyProbe8::tree &t0 = *_f.t0;
+        uint64_t _x = _f._x;
+        if (std::holds_alternative<typename MemSafetyProbe8::tree::Leaf>(
+                t0.v())) {
+          _result = UINT64_C(0);
+        } else {
+          const auto &[a0, a1, a2] =
+              std::get<typename MemSafetyProbe8::tree::Node>(t0.v());
+          _stack.emplace_back(
+              _After_Node{crane_raw(a0), UINT64_C(0), UINT64_C(1)});
+          _stack.emplace_back(_Enter{crane_raw(a2), UINT64_C(0)});
+        }
+      } else if (std::holds_alternative<_After_Node>(_frame)) {
+        auto _f = std::move(std::get<_After_Node>(_frame));
+        _stack.emplace_back(_Combine_Node{std::move(_result), _f._s2});
+        _stack.emplace_back(_Enter{_f.a0, _f._s1});
+      } else {
+        auto _f = std::move(std::get<_Combine_Node>(_frame));
+        _result = ((_f._s1 + std::move(_result)) + std::move(_f._result));
+      }
     }
+    return _result;
   };
   auto go = [&](uint64_t _x, const MemSafetyProbe8::tree &t0) -> uint64_t {
     return go_impl(go_impl, _x, t0);

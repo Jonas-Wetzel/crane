@@ -486,16 +486,43 @@ List<uint64_t> LoopifyListRelations::union_(const List<uint64_t> &l1,
       const auto &[a0, a1] =
           std::get<typename List<uint64_t>::Cons>(_loop_l1->v());
       if ([&]() {
-            auto member_impl = [](auto &_self_member, uint64_t y,
-                                  const List<uint64_t> &ys) -> bool {
-              if (std::holds_alternative<typename List<uint64_t>::Nil>(
-                      ys.v())) {
-                return false;
-              } else {
-                const auto &[a2, a3] =
-                    std::get<typename List<uint64_t>::Cons>(ys.v());
-                return (y == a2 || _self_member(_self_member, y, *a3));
+            auto member_impl = [&](auto &, uint64_t y,
+                                   const List<uint64_t> &ys) -> bool {
+              /// _Enter: captures varying parameters for each recursive call.
+              struct _Enter {
+                const List<uint64_t> *ys;
+              };
+              /// _Resume_Cons: saves [_s0], resumes after recursive call with
+              /// _result.
+              struct _Resume_Cons {
+                bool _s0;
+              };
+              using _Frame = std::variant<_Enter, _Resume_Cons>;
+              bool _result{};
+              crane::small_vector<_Frame> _stack;
+              _stack.emplace_back(_Enter{&ys});
+              /// Loopified member: _Enter -> _Resume_Cons.
+              while (!_stack.empty()) {
+                _Frame _frame = std::move(_stack.back());
+                _stack.pop_back();
+                if (std::holds_alternative<_Enter>(_frame)) {
+                  auto _f = std::move(std::get<_Enter>(_frame));
+                  const List<uint64_t> &ys = *_f.ys;
+                  if (std::holds_alternative<typename List<uint64_t>::Nil>(
+                          ys.v())) {
+                    _result = false;
+                  } else {
+                    const auto &[a2, a3] =
+                        std::get<typename List<uint64_t>::Cons>(ys.v());
+                    _stack.emplace_back(_Resume_Cons{y == a2});
+                    _stack.emplace_back(_Enter{crane_raw(a3)});
+                  }
+                } else {
+                  auto _f = std::move(std::get<_Resume_Cons>(_frame));
+                  _result = (_f._s0 || std::move(_result));
+                }
               }
+              return _result;
             };
             auto member = [&](uint64_t y, const List<uint64_t> &ys) -> bool {
               return member_impl(member_impl, y, ys);
@@ -530,16 +557,43 @@ List<uint64_t> LoopifyListRelations::intersection(const List<uint64_t> &l1,
       const auto &[a0, a1] =
           std::get<typename List<uint64_t>::Cons>(_loop_l1->v());
       if ([&]() {
-            auto member_impl = [](auto &_self_member, uint64_t y,
-                                  const List<uint64_t> &ys) -> bool {
-              if (std::holds_alternative<typename List<uint64_t>::Nil>(
-                      ys.v())) {
-                return false;
-              } else {
-                const auto &[a2, a3] =
-                    std::get<typename List<uint64_t>::Cons>(ys.v());
-                return (y == a2 || _self_member(_self_member, y, *a3));
+            auto member_impl = [&](auto &, uint64_t y,
+                                   const List<uint64_t> &ys) -> bool {
+              /// _Enter: captures varying parameters for each recursive call.
+              struct _Enter {
+                const List<uint64_t> *ys;
+              };
+              /// _Resume_Cons: saves [_s0], resumes after recursive call with
+              /// _result.
+              struct _Resume_Cons {
+                bool _s0;
+              };
+              using _Frame = std::variant<_Enter, _Resume_Cons>;
+              bool _result{};
+              crane::small_vector<_Frame> _stack;
+              _stack.emplace_back(_Enter{&ys});
+              /// Loopified member: _Enter -> _Resume_Cons.
+              while (!_stack.empty()) {
+                _Frame _frame = std::move(_stack.back());
+                _stack.pop_back();
+                if (std::holds_alternative<_Enter>(_frame)) {
+                  auto _f = std::move(std::get<_Enter>(_frame));
+                  const List<uint64_t> &ys = *_f.ys;
+                  if (std::holds_alternative<typename List<uint64_t>::Nil>(
+                          ys.v())) {
+                    _result = false;
+                  } else {
+                    const auto &[a2, a3] =
+                        std::get<typename List<uint64_t>::Cons>(ys.v());
+                    _stack.emplace_back(_Resume_Cons{y == a2});
+                    _stack.emplace_back(_Enter{crane_raw(a3)});
+                  }
+                } else {
+                  auto _f = std::move(std::get<_Resume_Cons>(_frame));
+                  _result = (_f._s0 || std::move(_result));
+                }
               }
+              return _result;
             };
             auto member = [&](uint64_t y, const List<uint64_t> &ys) -> bool {
               return member_impl(member_impl, y, ys);
