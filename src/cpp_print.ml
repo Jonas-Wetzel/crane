@@ -4338,14 +4338,13 @@ let pp_type par vl t =
     declaration groups in the generated C++ source). *)
 let cut2 () = brk (0, -100000) ++ brk (0, 0)
 
-(* Give [Translation]'s eager string renderers access to this module's
-   context-sensitive printer (see [Translation.render_cpp_type_in_template]).
-   The type is rendered as if inside a template body, which is where those raw
-   strings are emitted. *)
+(* Give [Translation] access to this module's context-sensitive printer (see
+   [Translation.render_cpp_type_in_template]).  The type is rendered as if
+   inside a template body, which is where those raw strings are emitted. *)
 
 let () =
-  Translation.set_cpp_type_printer (fun ty ->
+  Translation.set_cpp_type_printer (fun ?(lead = true) ty ->
     Pp.string_of_ppcmds
       (with_render_ctx
          (fun c -> { c with rc_in_template = true })
-         (fun () -> pp_cpp_type false [] ty)))
+         (fun () -> pp_cpp_type ~lead false [] ty)))

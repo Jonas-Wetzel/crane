@@ -75,11 +75,12 @@ public:
         if (_alt->a1 && _alt->a1.use_count() == 1) {
           std::atomic_thread_fence(std::memory_order_acquire);
           auto _lp = _alt->a1.get();
-          while (
-              std::holds_alternative<typename Datatypes::List<Forest<A>>::Cons>(
-                  _lp->v())) {
-            auto &_lc = std::get<typename Datatypes::List<Forest<A>>::Cons>(
-                _lp->v_mut());
+          while (std::holds_alternative<
+                 typename Datatypes::template List<Forest<A>>::Cons>(
+              _lp->v())) {
+            auto &_lc =
+                std::get<typename Datatypes::template List<Forest<A>>::Cons>(
+                    _lp->v_mut());
             _stack.push_back(std::make_shared<Forest<A>>(std::move(_lc.a)));
             if (_lc.l && _lc.l.use_count() == 1) {
               std::atomic_thread_fence(std::memory_order_acquire);

@@ -404,198 +404,8 @@ let extract_itree_result_ml (ml_ty : ml_type) : ml_type =
 let mk_itree_type (r_cpp : cpp_type) : cpp_type =
   Tshared_ptr (Tid_external ("ITree", [r_cpp]))
 
-(** Map well-known identifier names to their C++ equivalents.
-    Returns [None] for ordinary (non-special) identifiers. *)
-let resolve_special_id s =
-  if String.equal s "int0" then Some "int64_t"
-  else if String.equal s "string" then Some "std::string"
-  else if String.equal s "dummy_type"
-       || String.equal s "dummy_prop"
-       || String.equal s "dummy_implicit"
-  then Some "std::any"
-  else None
-
-(** Resolve a [VarRef] identifier to its C++ type name.
-    Extends {!resolve_special_id} with additional known aliases
-    like [prod] → [std::pair], [option] → [std::optional]. *)
-let resolve_varref_id s =
-  match resolve_special_id s with
-  | Some r -> r
-  | None ->
-    if String.equal s "prod" || String.equal s "Prod" then "std::pair"
-    else if String.equal s "option" || String.equal s "Option" then
-      "std::optional"
-    else if String.equal s "list" then "List"
-    else s
-
-(** Resolve an [IndRef] to its base C++ type name.  When the reference is
-    in [raw_inductives], returns the raw Coq name; otherwise computes the
-    C++ struct name with standard mappings (e.g. [prod] → [std::pair]).
-
-    Those two standard mappings only apply when [prod]/[option] really were
-    custom-extracted: the parametrized templates ([std::pair<%t0, %t1>]) cannot
-    be spliced in as a bare name, so this is where they are spelled out.  With
-    no mapping loaded the types are ordinary Crane inductives named [Prod] and
-    [Option], and naming them [std::pair]/[std::optional] here would contradict
-    every other rendering of the same type.
-
-    [~with_option] controls whether [option] maps to [std::optional] (only
-    meaningful for zero-argument occurrences). *)
-let resolve_indref_base ?(no_custom_inductives = Refset'.empty)
-    ~raw_inductives ~with_option r =
-  if Refset'.mem r raw_inductives then
-    Common.pp_global_name Type r
-  else
-    let base = Common.pp_global_name Type r in
-    let cap = Common.capitalize_last_component base in
-    let parent_is_cap =
-      match r with
-      | GlobRef.IndRef (kn, _) ->
-        ( match Names.MutInd.modpath kn with
-        | Names.ModPath.MPdot (_, label) ->
-          String.equal cap (Names.Label.to_string label)
-        | _ -> false )
-      | _ -> false
-    in
-    let use_std_alias =
-      (not (Refset'.mem r no_custom_inductives)) && Table.is_custom r
-    in
-    if use_std_alias && String.equal base "prod" then "std::pair"
-    else if use_std_alias && with_option
-         && (String.equal base "option" || String.equal base "Option")
-    then "std::optional"
-    else if parent_is_cap || String.equal base "nat" then cap
-    else if
-      List.exists
-        (globref_equal r)
-        (get_local_inductives ())
-    then
-      if Common.get_force_cross_file_qualification ()
-      then String.capitalize_ascii (Common.pp_global_name Type r)
-      else Common.pp_global Type r
-    else cap
-
-(** Render a C++ type as a plain string.  Used in [ITree<R>] qualified
-    expressions, [clone_as_value<T>] template arguments, and anywhere a
-    type must be serialised to a raw string.  Handles common built-in
-    types; falls back to ["auto"] for unknown shapes. *)
-let rec render_cpp_type_simple ?(raw_inductives = Refset'.empty)
-    ?(no_custom_inductives = Refset'.empty) ty =
-  let render = render_cpp_type_simple ~raw_inductives ~no_custom_inductives in
-  let with_args base ts =
-    match ts with [] -> base | _ ->
-    base ^ "<" ^ String.concat ", " (List.map render ts) ^ ">"
-  in
-  match ty with
-  | Tid (id, ts) ->
-    let s = Id.to_string id in
-    let base = match resolve_special_id s with Some r -> r | None -> s in
-    with_args base ts
-  | Tglob (r, ts, _) ->
-    let base =
-      match Table.find_custom_opt r with
-      | Some s
-        when (not (Refset'.mem r no_custom_inductives))
-             && Table.to_inline r && not (String.contains s '%') ->
-        s
-      | _ ->
-      match r with
-      | GlobRef.IndRef _ ->
-        resolve_indref_base ~no_custom_inductives ~raw_inductives
-          ~with_option:true r
-      | GlobRef.VarRef id -> resolve_varref_id (Id.to_string id)
-      | _ -> Common.pp_global_name Type r
-    in
-    with_args base ts
-  | Tid_external (s, ts) -> with_args s ts
-  | Tnamespace (g, t) ->
-    (* For local inductives whose names are eponymous with their parent module,
-       no qualification is needed.  For others, prepend the capitalized parent
-       module name (e.g., "NestedTree::tree").  We cannot use pp_global_name
-       here because it gives the raw Coq name ("list" → "list") instead of
-       the C++ struct name ("List"). *)
-    if Table.is_enum_inductive g then
-      let base = Common.pp_global_name Type g in
-      let enum_name = Common.capitalize_last_component base in
-      if
-        List.exists
-          (globref_equal g)
-          (get_local_inductives ())
-      then enum_name
-      else (
-        match g with
-        | GlobRef.IndRef (kn, _) ->
-          ( match Names.MutInd.modpath kn with
-          | Names.ModPath.MPdot (_, label) ->
-            Names.Label.to_string label ^ "::" ^ enum_name
-          | _ -> enum_name )
-        | _ -> enum_name )
-    else if not (get_record_fields g == []) then render t
-    else
-    let inner = render t in
-    let inner_base =
-      match String.index_opt inner '<' with
-      | Some i -> String.sub inner 0 i
-      | None -> inner
-    in
-    let parent_ns =
-      match g with
-      | GlobRef.IndRef (kn, _) ->
-        ( match Names.MutInd.modpath kn with
-        | Names.ModPath.MPdot (_, label) ->
-          let parent = Names.Label.to_string label in
-          (* Strip template args before comparing: "List<t_A>" → "List" *)
-          let cap_inner = Common.capitalize_last_component inner_base in
-          (* Eponymous shortcut: parent "List" = inner "List" → no prefix.
-             For MPdot types (inner module blocks), stripping the prefix avoids
-             the incorrect `Trie::Trie<T>` form from inside the module.  Note
-             that the MPdot branch cannot produce a fully qualified external
-             path anyway (it only sees the last label), so this shortcut is
-             the safest option for inner-module types. *)
-          if String.equal parent cap_inner then ""
-          else parent ^ "::"
-        | Names.ModPath.MPfile f ->
-          (* Top-level inductive in a .v file (e.g. list in Datatypes.v).
-             In separate extraction, external inductives need their parent
-             namespace as prefix (e.g. "Datatypes::").  In monolithic
-             extraction, everything is in the same file so no prefix is
-             needed — matching the old behaviour of the catch-all [_ -> ""]
-             branch. *)
-          if List.exists
-               (globref_equal g)
-               (get_local_inductives ())
-          then ""
-          else if not (Common.get_force_cross_file_qualification ())
-          then ""
-          else
-            let parent =
-              String.capitalize_ascii
-                (Id.to_string (List.hd (Names.DirPath.repr f)))
-            in
-            (* Always emit the file-namespace prefix, even if the inductive
-               name matches the file name (e.g. String::String).  The eponymous
-               shortcut is wrong here: `String` alone resolves to the C++
-               namespace, not to the type, so callers outside that namespace
-               always need the `String::String` qualified form. *)
-            parent ^ "::"
-        | _ -> "" )
-      | _ -> ""
-    in
-    parent_ns ^ inner
-  | Tconst t -> "const " ^ render t
-  | Tref t -> render t ^ "&"
-  | Tptr t -> render t ^ "*"
-  | Tvar (_, Some n) ->
-    let s = Id.to_string n in
-    ( match resolve_special_id s with Some r -> r | None -> s )
-  | Tqualified (base, id) ->
-    "typename " ^ render base ^ "::" ^ Id.to_string id
-  | Tshared_ptr t -> Table.shared_ptr_name () ^ "<" ^ render t ^ ">"
-  | Tvoid -> "void"
-  | _ -> "auto"
-
 (** Recursively wrap [Tglob] inductive references with [Tnamespace] so that
-    [render_cpp_type_simple] produces fully-qualified names.  The [~skip]
+    the type printer produces fully-qualified names.  The [~skip]
     predicate controls which references are left unwrapped: [qualify_inductives]
     wraps all inductives, while [qualify_inductives ~skip:(Refset'.mem g set)]
     leaves members of [set] bare.  Used when the rendered type will appear in
@@ -631,33 +441,16 @@ let rec qualify_inductives ?(skip = fun _ -> false) = function
     Tqualified (qualify_inductives ~skip base, id)
   | t -> t
 
-(** Render a C++ type as a string suitable for use in raw C++ template
-    arguments, applying post-hoc fixups for names that
-    {!render_cpp_type_simple} emits in Coq form rather than C++ form
-    (e.g. [int0] → [int64_t], [Uint64_t] → [Uint0]). *)
-let render_cpp_type_for_raw_template ?(raw_inductives = Refset'.empty)
-    ?(no_custom_inductives = Refset'.empty) ty =
-  Str.global_replace
-    (Str.regexp "\\<string\\>")
-    "std::string"
-    (Str.global_replace
-       (Str.regexp_string "Uint64_t")
-       "Uint0"
-       (Str.global_replace
-          (Str.regexp_string "int0")
-          "int64_t"
-          (render_cpp_type_simple ~raw_inductives ~no_custom_inductives ty)))
+(** The real type printer ([Cpp_print.pp_cpp_type]), installed by {!Cpp_print}
+    at load time because this module cannot depend on it.
 
-(** Forward reference to the real type printer ([Cpp_print.pp_cpp_type]),
-    installed by {!Cpp_print} at load time (this module cannot depend on it).
-
-    {!render_cpp_type_simple} is an eager, string-level approximation: it
-    cannot see the rendering context, so it misses namespace qualification of
-    unmerged inductive wrappers and the [typename] / [template]
-    disambiguators a dependent name needs.  Wherever a raw string must agree
-    with what the printer emits elsewhere in the same declaration, go through
-    {!render_cpp_type_in_template} instead. *)
-let cpp_type_printer : (cpp_type -> string) option ref = ref None
+    There used to be a second, string-level renderer here for callers that ran
+    before the printer was installed.  Nothing runs before a module's own
+    top-level initialiser, so it never did -- what it did do was spell a
+    handful of types differently from the printer (in Coq form, patched back
+    with three [Str.global_replace] passes), which is the whole of what a raw
+    template string embedded in printer output must not do. *)
+let cpp_type_printer : (?lead:bool -> cpp_type -> string) option ref = ref None
 
 let set_cpp_type_printer f = cpp_type_printer := Some f
 
@@ -666,12 +459,17 @@ let set_cpp_type_printer f = cpp_type_printer := Some f
 let is_methodified r = Cpp_names.lookup_method_this_pos r <> None
 
 (** Render [ty] as a string spelled exactly as the real printer would spell it
-    inside a template body, falling back to {!render_cpp_type_for_raw_template}
-    before the printer is installed. *)
-let render_cpp_type_in_template ty =
+    inside a template body.
+
+    [~lead:false] drops the leading [typename] a dependent name would get, for
+    a string that is about to be embedded as the base of a larger type: the
+    enclosing construct emits the one [typename] the whole name is allowed. *)
+let render_cpp_type_in_template ?lead ty =
   match !cpp_type_printer with
-  | Some f -> f ty
-  | None -> render_cpp_type_for_raw_template ty
+  | Some f -> f ?lead ty
+  | None ->
+    CErrors.anomaly
+      (Pp.str "Translation.render_cpp_type_in_template: printer not installed")
 
 let build_guard_compare_stmts n ids =
   match Table.find_guard_compare n with
@@ -1022,9 +820,9 @@ let subst_template tmpl ~scrut ~types ~bindings ~branches ~args =
     - [Tglob(g, ts1) -> Tglob(g, ts2)]: same container, different elements
     - Everything else (type variables, scalars): converting constructor
 
-    Uses [render_cpp_type_for_raw_template] to produce type strings for
-    [CPPraw]-based converting constructors, since [pp_cpp_type] renders
-    custom-extracted types with different namespace qualification.
+    Type strings for the [CPPraw]-based converting constructors go through
+    {!render_cpp_type_in_template}, so that they are spelled the way the
+    printer spells the same types in the code around them.
 
     @param skip    predicate for GlobRefs to skip during qualification
     @param src_ty  the source C++ type
@@ -5923,7 +5721,7 @@ and gen_expr ?(expected_ty : cpp_type option) ?(slot = empty_slot) env
                  [list] is the struct [List], and a bare [pp_global_name] would
                  name a type that does not exist.  The arguments are already
                  rendered here, so they go back in as opaque names. *)
-              render_cpp_type_simple
+              render_cpp_type_in_template
                 (Tglob
                    ( g,
                      List.map

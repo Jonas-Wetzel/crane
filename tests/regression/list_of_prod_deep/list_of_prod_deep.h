@@ -207,11 +207,11 @@ struct ListOfProdDeep {
         if (auto *_alt = std::get_if<Node>(&_v)) {
           if (_alt->a0 && _alt->a0.use_count() == 1) {
             std::atomic_thread_fence(std::memory_order_acquire);
-            crane::small_vector<
-                std::shared_ptr<ListOfProdDeep::lst<std::pair<t, uint64_t>>>>
+            crane::small_vector<std::shared_ptr<Lst<std::pair<t, uint64_t>>>>
                 _hw1;
-            if (auto *_ha5 = std::get_if<typename ListOfProdDeep::lst<
-                    std::pair<t, uint64_t>>::Lcons>(&(*_alt->a0).v_mut())) {
+            if (auto *_ha5 =
+                    std::get_if<typename Lst<std::pair<t, uint64_t>>::Lcons>(
+                        &(*_alt->a0).v_mut())) {
               _stack.push_back(std::make_shared<t>(std::move(_ha5->a0.first)));
               _hw1.push_back(std::move(_ha5->a1));
             }
@@ -223,8 +223,9 @@ struct ListOfProdDeep {
               }
               std::atomic_thread_fence(std::memory_order_acquire);
               auto &_hw1e = *_hw1p;
-              if (auto *_ha3 = std::get_if<typename ListOfProdDeep::lst<
-                      std::pair<t, uint64_t>>::Lcons>(&_hw1e.v_mut())) {
+              if (auto *_ha3 =
+                      std::get_if<typename Lst<std::pair<t, uint64_t>>::Lcons>(
+                          &_hw1e.v_mut())) {
                 _stack.push_back(
                     std::make_shared<t>(std::move(_ha3->a0.first)));
                 _hw1.push_back(std::move(_ha3->a1));

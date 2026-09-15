@@ -4986,7 +4986,7 @@ let gen_ind_header_v2
             qualify_inductives ~skip ty
           in
           let render_q_destr ty =
-            render_cpp_type_for_raw_template (q_destr ty)
+            render_cpp_type_in_template ~lead:false (q_destr ty)
           in
           (* Expand a [Drain "..."] template for a custom container field into a
              statement list. [%scrut] -> the container field expression [scrut];
