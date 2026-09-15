@@ -1136,17 +1136,20 @@ let classify check body =
     itself stands, since its reason is more specific than "a self-call
     remains".
 
+    @param survived Reason to record if a call did survive, when the caller
+                    knows something sharper than "a self-call remains"
     @param name     Display name of the function, for the report
     @param check    The same call checker the transform was driven by
     @param strategy What the transform says it did
     @param body     The {e transformed} body
     @return [body], unchanged *)
-let report_outcome ~name ~check ~strategy body =
+let report_outcome ?survived ~name ~check ~strategy body =
   let outcome =
     match strategy with
     | Lp_declined _ -> strategy
     | _ when classify check body <> No_recursion ->
-      Lp_declined "a self-call survived the transform"
+      Lp_declined
+        (Option.default "a self-call survived the transform" survived)
     | _ -> strategy
   in
   record_outcome name outcome;
@@ -4166,8 +4169,6 @@ and free_vars_body (stmts : cpp_stmt list) : Id.t list =
   in
   go [] stmts
 
-(** Remove duplicate [Id.t] values, preserving first-occurrence order. *)
-
 let subst_var_stmts old_id new_id stmts =
   List.map (subst_stmt [(old_id, new_id)]) stmts
 
@@ -4951,6 +4952,106 @@ type entry_emission = {
   ee_params : (Id.t * cpp_type) list;
   ee_body : cpp_stmt list;
 }
+
+(** {3 Local fixpoints that call back into their enclosing function} *)
+
+(** A local fixpoint that recurses back into the function it is defined in,
+    decomposed into the parts a frame machine needs to adopt it as a second
+    entry point.
+
+    The shape is the Y-combinator pair {!Translation.gen_local_fix_by_ref}
+    emits (see {!ycomb_self_id}), and what makes it interesting here is
+    {!lf_calls_back}: when the local fixpoint's body calls the enclosing
+    function, neither can be loopified alone.  Loopifying them separately
+    leaves each machine's stack unwound by the other, so the C++ still
+    recurses -- one machine entered from two points is what actually removes
+    the recursion. *)
+type local_fix = {
+  lf_self_id : Id.t;  (** The trailing [_self_f] self-reference parameter *)
+  lf_params : (Id.t * cpp_type) list;
+      (** Its parameters in source order, self-parameter dropped *)
+  lf_captures : Id.t list;
+      (** Free variables its body takes from the enclosing scope.  A second
+          entry's frame has to carry these alongside {!lf_params}: they are in
+          scope for the lambda but not for a dispatch loop that re-enters it
+          from a popped frame. *)
+}
+
+(** The fixpoint's own name, recovered from its self-parameter [_self_f]. *)
+let name_of_self_id self_id =
+  let s = Id.to_string self_id in
+  String.sub s
+    (String.length self_param_prefix)
+    (String.length s - String.length self_param_prefix)
+
+(** Decompose the [Sasgn] of a Y-combinator [f_impl] lambda into a
+    {!local_fix}, or [None] if the statement is not one.  [check] identifies
+    calls to the {i enclosing} function; a fixpoint whose body makes none of
+    them is left for {!loopify_inner_lambdas}, which handles it correctly on
+    its own. *)
+let local_fix_of_stmt check = function
+  | Sasgn (_impl_id, Declare Tauto, CPPlambda {cl_params; cl_body; _}) -> (
+    let lparams = to_reversed cl_params in
+    match ycomb_self_id lparams with
+    | None -> None
+    | Some lf_self_id ->
+      if collect_stmts check ~in_visitor:false cl_body = [] then None
+      else
+        (* Drop the trailing self-parameter, and any unnamed one: a frame can
+           only carry a binder it can name. *)
+        let lf_params =
+          match List.rev lparams with
+          | _self :: rest_rev ->
+            List.filter_map
+              (fun (ty, id_opt) ->
+                match id_opt with Some id -> Some (id, ty) | None -> None )
+              (List.rev rest_rev)
+          | [] -> []
+        in
+        let bound = lf_self_id :: List.map fst lf_params in
+        let lf_captures =
+          free_vars_body cl_body
+          |> List.filter (fun v -> not (List.exists (Id.equal v) bound))
+          |> List.sort_uniq Id.compare
+        in
+        Some {lf_self_id; lf_params; lf_captures} )
+  | _ -> None
+
+(** Find the first local fixpoint in [stmts] that calls back into the
+    enclosing function.
+
+    The search descends through statements -- the fixpoint is often bound
+    inside a match branch rather than at the body's top level -- but not into
+    expressions, so a lambda's own body is not searched: what it binds is a
+    fixpoint local to {i it}, not to the function being loopified.  Passing
+    [Fun.id] as {!Minicpp.map_stmt}'s expression function is what stops the
+    descent there. *)
+let find_local_fix check stmts =
+  let found = ref None in
+  let rec visit stmt =
+    if Option.is_empty !found then (
+      match local_fix_of_stmt check stmt with
+      | Some _ as hit -> found := hit
+      | None -> ignore (map_stmt Fun.id visit Fun.id stmt) );
+    stmt
+  in
+  List.iter (fun s -> ignore (visit s)) stmts;
+  !found
+
+(** Why a function whose recursion sits inside a local fixpoint cannot be
+    linearised by a single-entry machine, named concretely enough to act on. *)
+let local_fix_decline lf =
+  let captures =
+    match lf.lf_captures with
+    | [] -> ""
+    | ids ->
+      ", capturing " ^ String.concat ", " (List.map Id.to_string ids)
+  in
+  Printf.sprintf
+    "a self-call survived the transform: it is inside the local fixpoint %s \
+     (%d parameter(s)%s), which needs a second machine entry"
+    (name_of_self_id lf.lf_self_id)
+    (List.length lf.lf_params) captures
 
 (** The parameters the nontail frame-based transformation threads through its
     three mutually-recursive rewrite functions
@@ -8639,6 +8740,18 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
     end else
       (* Normal (non-lazy) function — existing path *)
       let kind = classify check body in
+      (* Recursion that lives inside a local fixpoint is visible to
+         {!classify} but out of reach of the transforms, which never rewrite
+         through a lambda: the machine they emit for it pushes nothing and its
+         loop runs once.  Note the fixpoint now, while the body still has the
+         Y-combinator shape, so the decline names it instead of reporting the
+         generic "a self-call survived". *)
+      let survived =
+        match kind with
+        | Nontail_recursion ->
+          Option.map local_fix_decline (find_local_fix check body)
+        | _ -> None
+      in
       let body, strategy =
         match kind with
         | No_recursion -> (body, None)
@@ -8659,7 +8772,7 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
       let body = loopify_inner_lambdas ~tparams body in
       (match strategy with
        | None -> body
-       | Some s -> report_outcome ~name ~check ~strategy:s body)
+       | Some s -> report_outcome ?survived ~name ~check ~strategy:s body)
   in
   Dfun (names, ret_ty, no_pure, Ddef (params, body))
 
