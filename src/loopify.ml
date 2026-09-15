@@ -360,6 +360,13 @@ let cell_field_name ~cell_ty ~ctor_name field_idx =
 type call_site = {
   cs_args : cpp_expr list;  (** Arguments to the recursive call *)
   cs_is_tail : bool;  (** Whether this call appears in tail position *)
+  cs_entry : int;
+      (** Which entry point of the frame machine this call targets, as an index
+          into the machine's entry table. A function loopified on its own has
+          exactly one entry, so this is [0]; it becomes meaningful once an
+          enclosing function and a fixpoint local to it share a single stack,
+          where a call selects which [_Enter]-style frame to push and hence
+          which parameter analysis applies. *)
   cs_recv : cpp_expr option;
       (** For a method call, the receiver expression {e as written}, before
           {!method_checker} converts it to the raw pointer stored in frames.
@@ -368,6 +375,17 @@ type call_site = {
           a synthesised [&recv] or [crane_raw(recv)] and therefore says nothing
           about the original expression. [None] for non-method calls. *)
 }
+
+(** [mk_call_site args] is the call site a {!call_checker} reports for a
+    recursive call taking [args].
+
+    Tail position is not something a checker can see -- it is a property of
+    where the call sits, which {!classify} determines -- so [cs_is_tail] starts
+    [false] and is set by whoever has that context. [entry] defaults to the
+    machine's first entry point, which is the only one a singly-loopified
+    function has. *)
+let mk_call_site ?(entry = 0) ?recv args =
+  {cs_args = args; cs_is_tail = false; cs_entry = entry; cs_recv = recv}
 
 (** Classification of a function body's recursion pattern. *)
 type recursion_kind =
@@ -509,7 +527,7 @@ let fn_checker (fn_refs : (GlobRef.t * cpp_type list) list) : call_checker =
  fun e ->
    match e with
    | CPPfun_call (_, CPPglob (r, _, _), args) when ref_matches fn_refs r ->
-     Some {cs_args = to_reversed args; cs_is_tail = false; cs_recv = None}
+     Some (mk_call_site (to_reversed args))
    | CPPfun_call (_, CPPvar id, args) ->
      let matches_name =
        List.exists
@@ -517,7 +535,7 @@ let fn_checker (fn_refs : (GlobRef.t * cpp_type list) list) : call_checker =
          fn_refs
      in
      if matches_name then
-       Some {cs_args = to_reversed args; cs_is_tail = false; cs_recv = None}
+       Some (mk_call_site (to_reversed args))
      else
        None
    | _ -> None
@@ -655,22 +673,21 @@ let method_checker
    match e with
    | CPPaccess_call (Aarrow, recv, id, args) when Id.equal id method_name ->
      if has_self_param then
-       Some {cs_args = recv_to_self recv :: args; cs_is_tail = false; cs_recv = Some recv}
+       Some (mk_call_site ~recv (recv_to_self recv :: args))
      else
-       Some {cs_args = args; cs_is_tail = false; cs_recv = None}
+       Some (mk_call_site args)
    | CPPfun_call (_, CPPvar id, args) when Id.equal id method_name ->
      let args_normal = call_args args in
      if has_self_param && List.length args_normal > n_params then
        let self_arg, rest = extract_at this_pos args_normal in
        ( match self_arg with
        | Some recv ->
-         Some {cs_args = recv_to_self recv :: rest; cs_is_tail = false; cs_recv = Some recv}
-       | None -> Some {cs_args = args_normal; cs_is_tail = false; cs_recv = None} )
+         Some (mk_call_site ~recv (recv_to_self recv :: rest))
+       | None -> Some (mk_call_site args_normal) )
      else if (not has_self_param) && List.length args_normal > n_params then
-       Some {cs_args = list_remove_at this_pos args_normal;
-             cs_is_tail = false; cs_recv = None}
+       Some (mk_call_site (list_remove_at this_pos args_normal))
      else
-       Some {cs_args = args_normal; cs_is_tail = false; cs_recv = None}
+       Some (mk_call_site args_normal)
    | CPPfun_call (_, CPPglob (r, _, _), args) ->
      let label = Label.to_id (Common.label_of_r r) in
      if Id.equal label method_name then
@@ -679,8 +696,8 @@ let method_checker
          let self_arg, rest = extract_at this_pos args_normal in
          ( match self_arg with
          | Some recv ->
-           Some {cs_args = recv_to_self recv :: rest; cs_is_tail = false; cs_recv = Some recv}
-         | None -> Some {cs_args = args_normal; cs_is_tail = false; cs_recv = None} )
+           Some (mk_call_site ~recv (recv_to_self recv :: rest))
+         | None -> Some (mk_call_site args_normal) )
        else
          let args_stripped =
            if List.length args_normal > n_params then
@@ -688,7 +705,7 @@ let method_checker
            else
              args_normal
          in
-         Some {cs_args = args_stripped; cs_is_tail = false; cs_recv = None}
+         Some (mk_call_site args_stripped)
      else
        None
    | _ -> None
@@ -4858,13 +4875,28 @@ let rec decompose_all_calls check expr =
     | None -> None )
   | _ -> None
 
-(** {3 Enter-rewrite context}
+(** {3 Enter-rewrite context} *)
 
-    The nontail frame-based transformation threads nine parameters through
-    three mutually-recursive rewrite functions ({!rewrite_enter_lambda_return},
-    {!rewrite_enter_stmts}, {!rewrite_enter_stmt}) plus the helper
-    {!gen_chained_call_frames}.  This record bundles them into a single value
-    so that call sites read [ctx] instead of nine positional arguments.
+(** One entry point of a frame machine.
+
+    An entry is the pair of things a call needs in order to become a stack
+    push: the [_Enter]-style frame struct that entering it goes through, and
+    the mask saying which of that entry's parameters vary across calls and so
+    have to be carried in the frame. A function loopified on its own has a
+    single entry; the representation is a table so that an enclosing function
+    and a fixpoint local to it can later share one stack, each entering
+    through its own frame. *)
+type machine_entry = {
+  en_enter_id : Id.t;  (** Frame struct entering this point goes through *)
+  en_varying : bool list;  (** Mask over this entry's parameters *)
+}
+
+(** The parameters the nontail frame-based transformation threads through its
+    three mutually-recursive rewrite functions
+    ({!rewrite_enter_lambda_return}, {!rewrite_enter_stmts},
+    {!rewrite_enter_stmt}) and the helper {!gen_chained_call_frames}, bundled
+    into a single value so that call sites read [ctx] rather than a dozen
+    positional arguments.
 
     All fields are constant within a single invocation of the outer
     transformation ({!transform_nontail}) except {!er_env}, which is narrowed
@@ -4872,6 +4904,8 @@ let rec decompose_all_calls check expr =
 type enter_rewrite_ctx = {
   er_check : call_checker;
       (** Identifies recursive calls in expressions *)
+  er_entries : machine_entry list;
+      (** The machine's entry points, indexed by {!call_site.cs_entry} *)
   er_varying : bool list;
       (** Bitmask: which function parameters vary across recursive calls *)
   er_tparams : (template_type * Id.t) list;
@@ -4894,6 +4928,22 @@ type enter_rewrite_ctx = {
       (** Invariant parameter ids — referenced directly from function scope,
           not stored in continuation frames *)
 }
+
+(** The entry point a call site targets. *)
+let entry_of ctx cs = List.nth ctx.er_entries cs.cs_entry
+
+(** The frame fields entering [cs]'s target carries: its arguments, narrowed to
+    the positions that vary across calls to that entry. The invariant ones are
+    in scope at the handler already, so parking them would be dead weight. *)
+let enter_args_for ctx cs = filter_by_mask (entry_of ctx cs).en_varying cs.cs_args
+
+(** The [_Enter]-style frame expression that enters [cs]'s target.
+
+    Which frame that is, and which of [cs]'s arguments it carries, both follow
+    from the call's entry point -- so the two must be read together, and this
+    is the only place that pairs them. *)
+let make_enter_for ctx cs =
+  CPPstruct_id ((entry_of ctx cs).en_enter_id, [], enter_args_for ctx cs)
 
 let partition_saved_invariant invariant_params saved_exprs saved_types =
   let analysis = map2_exn ~what:"partition_saved_invariant" (fun e ty ->
@@ -5379,9 +5429,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
         if nested_indices = [] then (* Simple tail call — just push Enter *)
           [
             make_stack_push
-              (CPPstruct_id
-                 (id_enter, [], filter_by_mask varying cs.cs_args)
-              );
+              (make_enter_for ctx cs);
           ]
         else (
           (* Nested argument: one argument to a direct tail call is itself a
@@ -5558,9 +5606,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
         make_stack_push (CPPstruct_id (Id.of_string call_name, [], saved_exprs_conv))
       in
       let push_enter =
-        make_stack_push
-          (CPPstruct_id
-             (id_enter, [], filter_by_mask varying cs.cs_args) )
+        make_stack_push (make_enter_for ctx cs)
       in
       [push_call; push_enter]
     | None when count_calls_expr check scrut >= 1 ->
@@ -5643,9 +5689,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
           make_stack_push (CPPstruct_id (Id.of_string call_name, [], []))
         in
         let push_enter =
-          make_stack_push
-            (CPPstruct_id
-               (id_enter, [], filter_by_mask varying cs.cs_args) )
+          make_stack_push (make_enter_for ctx cs)
         in
         [push_call; push_enter]
       | None ->
@@ -5809,7 +5853,7 @@ and rewrite_enter_stmts ctx stmts =
           ~offset:0
           ~make_assign_expr:(fun _fnames -> CPPmove (CPPvar (id_result)))
           ~saved:[] ~types:[]
-          ~enter_args:(filter_by_mask varying cs.cs_args)
+          ~enter_args:(enter_args_for ctx cs)
       | None ->
       match decompose_single_call check e with
       | Some d ->
@@ -6941,7 +6985,11 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
       if not v then Id.Set.add id acc else acc)
       Id.Set.empty params varying
   in
-  let ctx = { er_check = check; er_varying = varying; er_tparams = tparams;
+  (* Loopifying a function on its own gives a machine with one entry: the
+     function itself, entered through [_Enter]. *)
+  let entries = [{en_enter_id = id_enter; en_varying = varying}] in
+  let ctx = { er_check = check; er_entries = entries;
+               er_varying = varying; er_tparams = tparams;
                er_env = env; er_ret_ty = ret_ty;
                er_call_counter = call_counter; er_frames_ref = frames_ref;
                er_varying_param_types = varying_param_types;
@@ -7597,10 +7645,10 @@ let lambda_checker (lambda_name : Id.t) : call_checker =
    match e with
    | CPPfun_call (_, CPPvar id, args) when Id.equal id lambda_name ->
      (* Direct call: [f(args)] — by-reference fixpoint pattern *)
-     Some {cs_args = to_reversed args; cs_is_tail = false; cs_recv = None}
+     Some (mk_call_site (to_reversed args))
    | CPPfun_call (_, CPPderef (CPPvar id), args) when Id.equal id lambda_name ->
      (* Dereferenced call — shared_ptr fixpoint pattern *)
-     Some {cs_args = to_reversed args; cs_is_tail = false; cs_recv = None}
+     Some (mk_call_site (to_reversed args))
    | _ -> None
 
 (** Walk through a statement list and loopify any self-recursive [std::function]
@@ -7701,7 +7749,7 @@ let loopify_inner_lambdas ~tparams body =
       (* Drop the trailing self-forward argument. *)
       match call_args args with
       | _self_arg :: rest_rev ->
-        Some {cs_args = List.rev rest_rev; cs_is_tail = false; cs_recv = None}
+        Some (mk_call_site (List.rev rest_rev))
       | [] -> None )
     | _ -> None
   in
