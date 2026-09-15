@@ -42,15 +42,56 @@ let v _ x = x
 (** Shadow horizontal-or-vertical box constructor with identity. *)
 let hov _ x = x
 
+(** {2 Owned cells}
+
+    Every mutable cell this module owns is created by one of the constructors
+    below, which enrol it in {!reset_cpp_state} and in {!Table.census} at the
+    point it is defined.  Those two used to be hand-written lists naming the
+    same set of cells from two hundred lines away, and they had already drifted
+    apart; a cell that exists but is in neither list is now unrepresentable. *)
+
+(** How to empty each owned cell, innermost-defined first.  Order is immaterial:
+    the actions are independent. *)
+let owned_cells : (unit -> unit) list ref = ref []
+
+let on_reset f = owned_cells := f :: !owned_cells
+
+(** A hash table owned by this module, emptied between extractions.
+
+    @param census
+      report the table's size to {!Table.census} under [name].  Pass [false] for
+      a cell that emission legitimately fills, which the census's late-decision
+      check reads as a decision taken too late. *)
+let owned_table ?(census = true) name =
+  let t = Hashtbl.create 16 in
+  on_reset (fun () -> Hashtbl.clear t);
+  if census then Table.register_census name (fun () -> Hashtbl.length t);
+  t
+
+(** A list-valued ref owned by this module, emptied between extractions.  See
+    {!owned_table} for [census]. *)
+let owned_list ?(census = true) name =
+  let r = ref [] in
+  on_reset (fun () -> r := []);
+  if census then Table.register_census name (fun () -> List.length !r);
+  r
+
+(** A ref owned by this module, restored to [init] between extractions.  It
+    holds one thing rather than a set of them, so there is nothing to census. *)
+let owned_ref init =
+  let r = ref init in
+  on_reset (fun () -> r := init);
+  r
+
 (** The method registry is created once per extraction pass by scanning the full
     ml_structure. It replaces the old global_method_registry and
     methods_returning_any hashtables. Queries go through get_method_registry().
 *)
-let method_registry : Method_registry.t option ref = ref None
+let method_registry : Method_registry.t option ref = owned_ref None
 
 (** In separate extraction, a pre-built method registry from the full
     structure is used so that cross-module method calls are recognized. *)
-let global_method_registry : Method_registry.t option ref = ref None
+let global_method_registry : Method_registry.t option ref = owned_ref None
 
 let set_global_method_registry reg = global_method_registry := Some reg
 let clear_global_method_registry () = global_method_registry := None
@@ -63,7 +104,7 @@ let get_method_registry () =
 
 (** Pre-computed name resolution cache — populated once per extraction pass.
     Queries go through get_name_cache(). *)
-let name_cache : Name_resolution.t option ref = ref None
+let name_cache : Name_resolution.t option ref = owned_ref None
 
 (** Get the name cache, raising an anomaly if not initialized. *)
 let get_name_cache () =
@@ -223,7 +264,8 @@ let keywords =
 
 (** Set of module paths that produce output files in separate extraction.
     When non-empty, pp_open skips modules not in this set. *)
-let valid_output_modules : (ModPath.t, unit) Hashtbl.t = Hashtbl.create 16
+let valid_output_modules : (ModPath.t, unit) Hashtbl.t =
+  owned_table ~census:false "valid_output_modules"
 
 (** Set the modules that are allowed to produce output in this extraction run.
     Only modules in [mps] will emit #include directives via [pp_open].
@@ -234,7 +276,8 @@ let set_valid_output_modules mps =
 
 let clear_valid_output_modules () = Hashtbl.clear valid_output_modules
 
-let global_unmerged_wrappers : (string, unit) Hashtbl.t = Hashtbl.create 16
+let global_unmerged_wrappers : (string, unit) Hashtbl.t =
+  owned_table "global_unmerged_wrappers"
 
 (** Record that wrapper [name] must remain unmerged across extraction passes.
     Used in separate extraction so that inter-module references use the
@@ -324,17 +367,17 @@ let initial_render_ctx =
   }
 
 (** Global render context state. *)
-let render_ctx = ref initial_render_ctx
+let render_ctx = owned_ref initial_render_ctx
 
 (** Accumulator for nested module type concepts that must be hoisted out of
     requires bodies *)
-let hoisted_concept_defs : Pp.t list ref = ref []
+let hoisted_concept_defs : Pp.t list ref = owned_list "hoisted_concept_defs"
 
 (** Concepts from typeclasses declared inside a module.  A concept may only
     appear at namespace scope, so one declared in a module -- which is emitted
     as a struct -- cannot stay where it was written; it is collected here and
     emitted at file scope instead. *)
-let file_scope_concepts : Pp.t list ref = ref []
+let file_scope_concepts : Pp.t list ref = owned_list "file_scope_concepts"
 
 (** A concept a frame is holding back until after the struct it was written
     in, identified by whatever declares it. *)
@@ -352,7 +395,8 @@ let held_concept_equal a b =
 (** The concepts the struct now being rendered has held back: their
     declarations come after it, so neither a [requires] clause nor a
     [static_assert] inside it may name them yet. *)
-let held_back_concepts : held_concept list ref = ref []
+let held_back_concepts : held_concept list ref =
+  owned_list ~census:false "held_back_concepts"
 
 (** Whether a concept is one the current frame is holding back. *)
 let is_held_back_in held_back c =
@@ -362,7 +406,8 @@ let is_held_back_in held_back c =
     concept held back, its name, and the asserted subject -- qualified as far
     as the frames it has passed through; the frame that held the concept back
     emits it. *)
-let deferred_concept_asserts : (held_concept * Pp.t * Pp.t) list ref = ref []
+let deferred_concept_asserts : (held_concept * Pp.t * Pp.t) list ref =
+  owned_list ~census:false "deferred_concept_asserts"
 
 (** [with_render_ctx upd f] renders [f] in the context [upd] derives from the
     current one, and puts the enclosing context back on the way out however [f]
@@ -383,9 +428,12 @@ let with_render_ctx (upd : render_ctx -> render_ctx) (f : unit -> 'a) : 'a =
     cross-functor matching. [non_accessor_labels] tracks labels that are
     also used by NON-Meyers-singleton definitions, to prevent false positives
     when doing label-only fallback matching. *)
-let template_static_accessors : (ModPath.t * Label.t) list ref = ref []
-let template_static_accessor_kns : (KerName.t, unit) Hashtbl.t = Hashtbl.create 16
-let non_accessor_labels : (Label.t, unit) Hashtbl.t = Hashtbl.create 16
+let template_static_accessors : (ModPath.t * Label.t) list ref =
+  owned_list "template_static_accessors"
+let template_static_accessor_kns : (KerName.t, unit) Hashtbl.t =
+  owned_table "template_static_accessor_kns"
+let non_accessor_labels : (Label.t, unit) Hashtbl.t =
+  owned_table "non_accessor_labels"
 
 (** Record a definition as a template static accessor (Meyers singleton).
     Definitions rendered this way are emitted as inline functions rather than
@@ -413,34 +461,35 @@ let register_template_static_accessor_ref r =
 (** Maps applied module paths to their functor source modpaths. E.g.,
     NatWrapper's modpath -> Wrapper's modpath. Populated when processing
     MEapply. *)
-let functor_app_sources : (ModPath.t, ModPath.t) Hashtbl.t = Hashtbl.create 16
+let functor_app_sources : (ModPath.t, ModPath.t) Hashtbl.t =
+  owned_table "functor_app_sources"
 
 (** Track eponymous type info for method generation. When a module M contains an
     inductive type m (lowercase of M), functions taking shared_ptr<m> as first
     arg become methods on m. *)
-let eponymous_type_ref : GlobRef.t option ref = ref None
+let eponymous_type_ref : GlobRef.t option ref = owned_ref None
 
 (** Set during module rendering when the eponymous inductive should be promoted
     into the module struct. cpp_ind.ml checks this to render fields flat instead
     of a wrapping struct. *)
-let eponymous_promote_ref : GlobRef.t option ref = ref None
+let eponymous_promote_ref : GlobRef.t option ref = owned_ref None
 
 (** Accumulator for non-inductive definitions that should be emitted after the
     promoted template struct at file scope. *)
-let eponymous_deferred : Pp.t ref = ref (Pp.mt ())
+let eponymous_deferred : Pp.t ref = owned_ref (Pp.mt ())
 
 
 (** Whether the promoted inductive needs enable_shared_from_this. Captured
     during flat rendering in cpp_ind.ml, consumed by the MEstruct wrapper in
     cpp.ml. *)
-let eponymous_promote_sft : bool ref = ref false
+let eponymous_promote_sft : bool ref = owned_ref false
 
 (** Collected method candidates: (function_ref, body, type, this_position) for
     current eponymous type. this_position is the index (0-based) of the first
     argument that matches the eponymous type. *)
 let method_candidates :
     (GlobRef.t * Miniml.ml_ast * Miniml.ml_type * int) list ref =
-  ref []
+  owned_list "method_candidates"
 
 (** Eponymous record: when a module M contains a record with the same name
     (e.g., module CHT with record CHT), we merge the record fields into the
@@ -448,7 +497,7 @@ let method_candidates :
     ind_packet) *)
 let eponymous_record :
     (GlobRef.t * Miniml.record_field list * Miniml.ml_ind_packet) option ref =
-  ref None
+  owned_ref None
 
 (** {2 Scoped render state}
 
@@ -464,8 +513,8 @@ type saver = Saver : 'a ref -> saver
 (** [with_saved cells f] runs [f] and puts every cell in [cells] back the way
     it found it, however [f] leaves -- returning or raising.
 
-    The point is to name the cells a scope owns in one place.  Five of the six
-    restores this replaced were written out at the end of a branch some
+    The point is to name the cells a scope owns in one place.  Five of the
+    six restores this replaced were written out at the end of a branch some
     hundreds of lines below the save, and none of them survived an
     exception. *)
 let with_saved cells f =
@@ -478,12 +527,12 @@ let with_saved cells f =
   in
   Fun.protect ~finally:(fun () -> List.iter (fun g -> g ()) restores) f
 
-(** The state a module frame owns: what it says is true of the module now being
-    rendered and of nothing outside it, so a nested render must not inherit it
-    and the enclosing one must get it back.
+(** The state a module frame owns: what it says is true of the module now
+    being rendered and of nothing outside it, so a nested render must not
+    inherit it and the enclosing one must get it back.
 
-    {!render_ctx} is not here -- entering a module changes it rather than merely
-    shadowing it, which is {!with_render_ctx}'s job. *)
+    {!render_ctx} is not here -- entering a module changes it rather than
+    merely shadowing it, which is {!with_render_ctx}'s job. *)
 let module_frame_cells =
   [
     Saver eponymous_type_ref;
@@ -493,10 +542,10 @@ let module_frame_cells =
   ]
 
 (** [with_module_frame f] renders [f] as a module frame: it starts with no
-    eponymous type, no eponymous record and no method candidates of its own, and
-    leaves the enclosing frame's untouched.  [held_back_concepts] carries over,
-    since a concept the enclosing struct is holding back is still unusable
-    inside a nested one. *)
+    eponymous type, no eponymous record and no method candidates of its own,
+    and leaves the enclosing frame's untouched.  [held_back_concepts] carries
+    over, since a concept the enclosing struct is holding back is still
+    unusable inside a nested one. *)
 let with_module_frame f =
   with_saved module_frame_cells (fun () ->
       eponymous_type_ref := None;
@@ -625,25 +674,29 @@ let is_typeclass_instance _body ty =
    wrapper struct name. When a module like Stdlib.Init.Nat is wrapped
    in 'struct Nat { ... }', this table records the mapping so that
    references to functions in that module get properly qualified. *)
-let wrapper_module_table : (ModPath.t, string) Hashtbl.t = Hashtbl.create 16
+let wrapper_module_table : (ModPath.t, string) Hashtbl.t =
+  owned_table "wrapper_module_table"
 
 (** Collision wrapper table: tracks modpaths that were registered as
     collision-wrapped (i.e., a child module whose name collides with a global
     inductive, wrapped into a parent struct). For these, wrapper_qualify_name
     strips the child qualifier. *)
-let collision_wrapper_table : (ModPath.t, unit) Hashtbl.t = Hashtbl.create 16
+let collision_wrapper_table : (ModPath.t, unit) Hashtbl.t =
+  owned_table "collision_wrapper_table"
 
 (** The name each type class's concept is emitted under, for the classes whose
     own name does not settle it: a concept is declared at file scope, so two
     classes called [C] in different modules are told apart by their module's
     name.  Decided by the structure analysis before any
     rendering, and read by {!Cpp_names.concept_name_of_ref}. *)
-let concept_name_table : (GlobRef.t, string) Hashtbl.t = Hashtbl.create 8
+let concept_name_table : (GlobRef.t, string) Hashtbl.t =
+  owned_table "concept_name_table"
 
 (** Global-scope enum table: tracks enum inductives that were rendered at global
     scope (not inside any struct). Used to avoid incorrect struct qualification
     in .cpp files. *)
-let global_scope_enum_table : (GlobRef.t, unit) Hashtbl.t = Hashtbl.create 16
+let global_scope_enum_table : (GlobRef.t, unit) Hashtbl.t =
+  owned_table "global_scope_enum_table"
 
 (** Global-scope type alias table: tracks type aliases (ConstRef from Dtype)
     that were rendered at global scope as [using T = ...] declarations, not
@@ -657,7 +710,7 @@ let global_scope_enum_table : (GlobRef.t, unit) Hashtbl.t = Hashtbl.create 16
     any struct.  Queried in [cpp_names.ml] for name qualification.
     Cleared by [reset_cpp_state] between extraction runs. *)
 let global_scope_type_alias_table : (GlobRef.t, unit) Hashtbl.t =
-  Hashtbl.create 8
+  owned_table "global_scope_type_alias_table"
 
 let register_global_scope_type_alias r =
   Hashtbl.replace global_scope_type_alias_table r ()
@@ -670,13 +723,15 @@ let is_global_scope_type_alias r =
     struct. Full definitions are rendered separately in PASS 3 after all types
     are defined. Populated during do_struct_with_decl_tracking PASS 1. Consumed
     during Dnspace rendering in PASS 2. *)
-let pending_wrapper_decls : (string, Pp.t) Hashtbl.t = Hashtbl.create 16
+let pending_wrapper_decls : (string, Pp.t) Hashtbl.t =
+  owned_table "pending_wrapper_decls"
 
 (** Set of wrapper struct names that have pending declarations and thus cannot
     be merged. Populated alongside pending_wrapper_decls during PASS 1. Used
     during type/expression rendering to decide between merged (List<A>) and
     unmerged (List::list<A>) name formats. Not consumed during rendering. *)
-let unmerged_wrappers : (string, unit) Hashtbl.t = Hashtbl.create 16
+let unmerged_wrappers : (string, unit) Hashtbl.t =
+  owned_table "unmerged_wrappers"
 
 (** What a nested struct name was emitted for. A Rocq module has no
     [GlobRef.t], so it is identified by its module path instead -- which also
@@ -696,7 +751,7 @@ type nested_struct_owner = NSref of GlobRef.t | NSmodule of ModPath.t
     each declare a type [t] -- which is why the shadowed reference has to be
     identified rather than assumed. *)
 let nested_struct_names : (string, nested_struct_owner list) Hashtbl.t =
-  Hashtbl.create 16
+  owned_table "nested_struct_names"
 
 let nested_struct_owner_equal a b =
   match (a, b) with
@@ -731,7 +786,8 @@ let is_shadowed_global_name name r =
     Pre-populated in do_struct_with_decl_tracking before code generation. Used
     to detect module-inductive name collisions (e.g., N/Z appearing as both an
     inductive from BinNums and a module from BinNat). *)
-let global_inductive_names : (string, ModPath.t) Hashtbl.t = Hashtbl.create 16
+let global_inductive_names : (string, ModPath.t) Hashtbl.t =
+  owned_table "global_inductive_names"
 
 (** Check if a GlobRef belongs to a wrapper module and return the qualified
     name. If the reference's module path matches a wrapper module, prepend the
@@ -881,7 +937,7 @@ let method_returns_any (func_ref : GlobRef.t) : bool =
     See also: pp_inductive_type_name which uses this registry for type name
     rendering. *)
 let global_eponymous_record_registry : (GlobRef.t, unit) Hashtbl.t =
-  Hashtbl.create 100
+  owned_table "global_eponymous_record_registry"
 
 (** Reverse index for {!get_containing_eponymous_struct}: maps a module path to
     the eponymous record declared in it. Kept in sync by
@@ -890,7 +946,7 @@ let global_eponymous_record_registry : (GlobRef.t, unit) Hashtbl.t =
     module (a record sharing its module's name), so a single-valued index is
     exact. Reset alongside [global_eponymous_record_registry]. *)
 let eponymous_record_by_modpath : (ModPath.t, GlobRef.t) Hashtbl.t =
-  Hashtbl.create 100
+  owned_table "eponymous_record_by_modpath"
 
 (** Register a record as eponymous with its containing module. *)
 let register_eponymous_record (record_ref : GlobRef.t) =
@@ -922,73 +978,22 @@ let get_containing_eponymous_struct (r : GlobRef.t) : GlobRef.t option =
     modules. When processing a module like List inside tree.v, we need to also
     scan sibling declarations (like app) that are from the same Rocq module. *)
 let current_structure_decls : (Label.t * Miniml.ml_structure_elem) list ref =
-  ref []
+  owned_list ~census:false "current_structure_decls"
 
-(** Enrol this module's tables in {!Table.census}.  Kept beside
-    {!reset_cpp_state}, which is the other place that has to name them all. *)
+(** [promoted_inductives] lives in {!Table} but is reset and censused here,
+    since this is the module that fills it. *)
 let () =
-  let tbl name t = Table.register_census name (fun () -> Hashtbl.length t) in
-  let lst name r = Table.register_census name (fun () -> List.length !r) in
-  tbl "promoted_inductives" promoted_inductives;
-  tbl "global_eponymous_record_registry" global_eponymous_record_registry;
-  tbl "eponymous_record_by_modpath" eponymous_record_by_modpath;
-  tbl "wrapper_module_table" wrapper_module_table;
-  tbl "collision_wrapper_table" collision_wrapper_table;
-  tbl "concept_name_table" concept_name_table;
-  tbl "global_scope_enum_table" global_scope_enum_table;
-  tbl "global_scope_type_alias_table" global_scope_type_alias_table;
-  tbl "pending_wrapper_decls" pending_wrapper_decls;
-  tbl "unmerged_wrappers" unmerged_wrappers;
-  tbl "nested_struct_names" nested_struct_names;
-  tbl "global_inductive_names" global_inductive_names;
-  tbl "global_unmerged_wrappers" global_unmerged_wrappers;
-  tbl "template_static_accessor_kns" template_static_accessor_kns;
-  tbl "non_accessor_labels" non_accessor_labels;
-  tbl "functor_app_sources" functor_app_sources;
-  lst "template_static_accessors" template_static_accessors;
-  lst "hoisted_concept_defs" hoisted_concept_defs;
-  lst "file_scope_concepts" file_scope_concepts;
-  lst "method_candidates" method_candidates
+  on_reset (fun () -> Hashtbl.clear promoted_inductives);
+  Table.register_census "promoted_inductives" (fun () ->
+      Hashtbl.length promoted_inductives )
 
-(** Reset ALL global state - must be called between extractions to avoid
-    pollution. This prevents state from one extraction affecting another when
-    running multiple extractions in the same process (e.g., during 'dune
-    build'). *)
+(** Reset all state owned by this module, so that one extraction in a process
+    cannot affect the next.  Every cell created by {!owned_table},
+    {!owned_list} or {!owned_ref} is emptied; the rest is state other modules
+    own that only this one knows to reset. *)
 let reset_cpp_state () =
-  render_ctx := initial_render_ctx;
+  List.iter (fun empty -> empty ()) !owned_cells;
   Doc_comments.reset ();
-  eponymous_type_ref := None;
-  eponymous_promote_ref := None;
-  eponymous_deferred := Pp.mt ();
-  Hashtbl.clear promoted_inductives;
-  eponymous_promote_sft := false;
-  eponymous_record := None;
-  method_candidates := [];
-  current_structure_decls := [];
-  method_registry := None;
-  global_method_registry := None;
-  name_cache := None;
-  Hashtbl.clear global_eponymous_record_registry;
-  Hashtbl.clear eponymous_record_by_modpath;
-  Hashtbl.clear wrapper_module_table;
-  Hashtbl.clear collision_wrapper_table;
-  Hashtbl.clear concept_name_table;
-  Hashtbl.clear global_scope_enum_table;
-  Hashtbl.clear global_scope_type_alias_table;
-  Hashtbl.clear pending_wrapper_decls;
-  Hashtbl.clear unmerged_wrappers;
-  Hashtbl.clear nested_struct_names;
-  Hashtbl.clear global_inductive_names;
-  Hashtbl.clear valid_output_modules;
-  Hashtbl.clear global_unmerged_wrappers;
-  template_static_accessors := [];
-  Hashtbl.clear template_static_accessor_kns;
-  Hashtbl.clear non_accessor_labels;
-  Hashtbl.clear functor_app_sources;
-  hoisted_concept_defs := [];
-  file_scope_concepts := [];
-  held_back_concepts := [];
-  deferred_concept_asserts := [];
   Common.reset_ctor_field_names ();
   Table.reset_demands ();
   Table.reset_main_function ()
