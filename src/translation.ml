@@ -11134,7 +11134,18 @@ and gen_custom_cpp_case env k (typ : ml_type) t pv =
             | None -> false) -> Some typ
     | _ -> None
   in
-  let t = gen_expr ?expected_ty:scrut_expected env t in
+  (* A scrutinee is not a tail position: whatever the enclosing function
+     returns says nothing about the value being matched on.  Naming the
+     match's own type here keeps {!slot_cpp_ty}'s fallback from recovering a
+     boxed scrutinee at the return type -- [any_cast<step_result>] on what is
+     a [bool]. *)
+  let t =
+    let saved_ret = (!tctx).current_cpp_return_type in
+    tctx := { !tctx with current_cpp_return_type = Some typ };
+    let t = gen_expr ?expected_ty:scrut_expected env t in
+    tctx := { !tctx with current_cpp_return_type = saved_ret };
+    t
+  in
   tctx := { !tctx with move_dead_after = saved_dead };
   let pair_g_opt = match concrete_match_type with
     | Tglob (g, _, _) when is_prod_global g -> Some g

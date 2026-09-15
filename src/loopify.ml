@@ -5280,18 +5280,31 @@ let adopt_local_fix ~stmts check = function
           | _ -> e
         in
         let install_calls = rewrite_exprs reroute in
+        let bindings =
+          impl_id :: (match wrapper with Some w -> [w] | None -> [])
+        in
+        let install ss = install_calls (drop_bindings bindings ss) in
+        (* [reroute] only knows how to redirect a *call* on the fixpoint.  A
+           program that passes it around as a value -- Coq's [FMapList.map2]
+           returns it from a branch and applies it outside -- keeps a mention
+           that installation cannot rewrite, and dropping the binding under it
+           would leave the name undefined.  Decline instead, and let the
+           postcondition check report the function as not linearisable. *)
+        let survives =
+          let free = free_vars_body (install stmts) in
+          List.exists
+            (fun id -> List.exists (Id.equal id) free)
+            bindings
+        in
+        if survives then None
+        else
         Some
           { ad_name = name;
             ad_entry_id = entry_id;
             ad_params = params;
             ad_captures = captures;
             ad_body = install_calls cl_body;
-            ad_install =
-              (fun ss ->
-                install_calls
-                  (drop_bindings
-                     (impl_id :: (match wrapper with Some w -> [w] | None -> []))
-                     ss ) );
+            ad_install = install;
             ad_what = "the local fixpoint " ^ name } )
   | _ -> None
 
