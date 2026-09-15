@@ -4998,10 +4998,6 @@ type local_fix = {
           scope for the lambda but not for a dispatch loop that re-enters it
           from a popped frame. *)
   lf_body : cpp_stmt list;  (** The [f_impl] lambda's body, entry 1's handler *)
-  lf_wrapper_id : Id.t option;
-      (** Binder of the wrapper lambda that ties the knot, when the enclosing
-          body binds one.  Calls the enclosing function makes to the fixpoint
-          go through it, so it is the name those call sites are keyed on. *)
 }
 
 (** The fixpoint's own name, recovered from its self-parameter [_self_f]. *)
@@ -5046,8 +5042,7 @@ let local_fix_of_stmt check = function
             lf_self_id;
             lf_params;
             lf_captures;
-            lf_body = cl_body;
-            lf_wrapper_id = None } )
+            lf_body = cl_body } )
   | _ -> None
 
 (** The statement lists that run as part of evaluating [e]: the bodies of
@@ -5093,21 +5088,6 @@ let find_local_fix check stmts =
   in
   List.iter (fun s -> ignore (visit s)) stmts;
   !found
-
-(** Why a function whose recursion sits inside a local fixpoint cannot be
-    linearised by a single-entry machine, named concretely enough to act on. *)
-let local_fix_decline lf =
-  let captures =
-    match lf.lf_captures with
-    | [] -> ""
-    | ids ->
-      ", capturing " ^ String.concat ", " (List.map Id.to_string ids)
-  in
-  Printf.sprintf
-    "a self-call survived the transform: it is inside the local fixpoint %s \
-     (%d parameter(s)%s), which needs a second machine entry"
-    (name_of_self_id lf.lf_self_id)
-    (List.length lf.lf_params) captures
 
 (** Drop the bindings of [ids] wherever they occur in [stmts].
 
@@ -5170,31 +5150,155 @@ let find_fix_wrapper impl_id stmts =
   List.iter (fun s -> ignore (visit s)) stmts;
   !found
 
-(** A checker matching the calls that reach [lf], reporting them as targeting
-    machine entry [entry].
+(** A body this machine adopts as an extra entry point.
 
-    Two call shapes reach one fixpoint: from inside, through its
-    self-reference parameter (which forwards itself as a trailing argument the
-    machine does not need); from outside, through the wrapper the enclosing
-    body binds. *)
-let local_fix_checker ~entry lf : call_checker =
+    Two shapes reach here, and the machine treats them alike: a fixpoint local
+    to the function ({!local_fix}), and the body of a mutual-recursion partner
+    that {!generic_inline_expr} left as an immediately-invoked lambda.  Both
+    hold calls that belong to this machine's recursion but sit where the
+    [_Enter] rewriter does not go, so neither can be linearised by a
+    single-entry machine. *)
+type adopted = {
+  ad_name : string;  (** Names the entry's frame, [_Enter_<name>] *)
+  ad_params : (Id.t * cpp_type) list;  (** Parameters, in source order *)
+  ad_captures : Id.t list;
+      (** Free variables the body takes from the enclosing scope.  The entry's
+          frame carries these alongside {!ad_params}: they are in scope for a
+          lambda but not for a dispatch loop re-entering it from a popped
+          frame. *)
+  ad_body : cpp_stmt list;  (** The entry's handler *)
+  ad_drop : Id.t list;
+      (** Bindings that are dead once the body is adopted, and not merely
+          untidy: they still hold a call the loopification postcondition would
+          see, so leaving them in gets the function reported as declined even
+          though its machine is correct. *)
+  ad_enters : cpp_expr -> cpp_expr list option;
+      (** The calls that enter this body, and the arguments they pass --
+          {!ad_captures} excluded, since {!adopted_checker} appends those. *)
+  ad_decline : string;
+      (** Why a single-entry machine cannot linearise this function, named
+          concretely enough to act on. *)
+}
+
+(** The calls reaching [ad], reported as targeting machine entry [entry]. *)
+let adopted_checker ~entry ad : call_checker =
   (* The captured variables are arguments of the entry even though no call
-     site writes them: they reach the lambda through its closure, and a frame
-     re-entering the fixpoint has to carry them.  They are in scope wherever a
-     call to the fixpoint is, so appending them here -- in the order entry 1's
-     parameter list is built -- is what makes the two agree. *)
-  let captured = List.map (fun id -> CPPvar id) lf.lf_captures in
-  fun e ->
-    match e with
-    | CPPfun_call (_, CPPvar id, args) when Id.equal id lf.lf_self_id -> (
-      match call_args args with
-      | _self_arg :: rest_rev ->
-        Some (mk_call_site ~entry (List.rev rest_rev @ captured))
-      | [] -> None )
-    | CPPfun_call (_, CPPvar id, args)
-      when Option.equal Id.equal (Some id) lf.lf_wrapper_id ->
-      Some (mk_call_site ~entry (List.rev (call_args args) @ captured))
-    | _ -> None
+     site writes them: they reach the body through a closure, and a frame
+     re-entering it has to carry them.  They are in scope wherever a call to
+     the body is, so appending them here -- in the order the entry's parameter
+     list is built -- is what makes the two agree. *)
+  let captured = List.map (fun id -> CPPvar id) ad.ad_captures in
+  fun e -> Option.map (fun args -> mk_call_site ~entry (args @ captured))
+             (ad.ad_enters e)
+
+(** Adopt a local fixpoint.  [wrapper] is the knot-tying binder, when the
+    enclosing body has one: calls from outside the fixpoint go through it, so
+    it is a second name its call sites are keyed on. *)
+let adopted_of_local_fix ~wrapper lf =
+  { ad_name = name_of_self_id lf.lf_self_id;
+    ad_params = lf.lf_params;
+    ad_captures = lf.lf_captures;
+    ad_body = lf.lf_body;
+    ad_drop = lf.lf_impl_id :: (match wrapper with Some w -> [w] | None -> []);
+    ad_enters =
+      (fun e ->
+        match e with
+        | CPPfun_call (_, CPPvar id, args) when Id.equal id lf.lf_self_id -> (
+          (* From inside: through the self-reference parameter, which forwards
+             itself as a leading argument the machine does not need. *)
+          match call_args args with
+          | _self_arg :: rest_rev -> Some (List.rev rest_rev)
+          | [] -> None )
+        | CPPfun_call (_, CPPvar id, args)
+          when Option.equal Id.equal (Some id) wrapper ->
+          Some (List.rev (call_args args))
+        | _ -> None);
+    ad_decline =
+      Printf.sprintf
+        "a self-call survived the transform: it is inside the local fixpoint \
+         %s (%d parameter(s)%s), which needs a second machine entry"
+        (name_of_self_id lf.lf_self_id)
+        (List.length lf.lf_params)
+        ( match lf.lf_captures with
+        | [] -> ""
+        | ids -> ", capturing " ^ String.concat ", " (List.map Id.to_string ids) ) }
+
+(** Adopt the body of an immediately-invoked lambda that still calls this
+    function -- what {!generic_inline_expr} leaves behind when a mutual
+    recursion partner is inlined in a non-tail position.
+
+    Unlike a fixpoint the lambda has no name to key call sites on, so the one
+    call that enters it is the invocation itself, recognised structurally. *)
+let adopted_of_invocation check e =
+  match e with
+  | CPPfun_call (_, CPPlambda {cl_params; cl_body; _}, args)
+    when collect_stmts check ~in_visitor:false cl_body <> [] ->
+    let params =
+      List.filter_map
+        (fun (ty, id_opt) ->
+          match id_opt with Some id -> Some (id, ty) | None -> None )
+        (to_reversed cl_params)
+    in
+    let call_args_fwd = List.rev (call_args args) in
+    if params = [] || List.length params <> List.length call_args_fwd then None
+    else
+      let invoked = cl_body in
+      let bound = List.map fst params in
+      let captures =
+        free_vars_body cl_body
+        |> List.filter (fun v -> not (List.exists (Id.equal v) bound))
+        |> List.sort_uniq Id.compare
+      in
+      Some
+        { ad_name = "inl";
+          ad_params = params;
+          ad_captures = captures;
+          ad_body = cl_body;
+          ad_drop = [];
+          ad_enters =
+            (fun e' ->
+              match e' with
+              | CPPfun_call (_, CPPlambda l', args') when l'.cl_body = invoked
+                ->
+                Some (List.rev (call_args args'))
+              | _ -> None);
+          ad_decline =
+            Printf.sprintf
+              "a self-call survived the transform: it is inside an inlined \
+               body (%d parameter(s)), which needs a second machine entry"
+              (List.length params) }
+  | _ -> None
+
+(** The body this machine should adopt, if any.
+
+    A local fixpoint is preferred: it is the shape translation emits for Coq's
+    [let fix], and it names itself.  Failing that, an invoked lambda in the
+    function's flow -- the residue of inlining a mutual-recursion partner.  In
+    both cases only statements that run as part of this function's flow are
+    searched; see {!find_local_fix}. *)
+let find_adopted check stmts =
+  match find_local_fix check stmts with
+  | Some lf ->
+    Some (adopted_of_local_fix ~wrapper:(find_fix_wrapper lf.lf_impl_id stmts) lf)
+  | None ->
+    let found = ref None in
+    let rec visit_expr e =
+      if Option.is_empty !found then (
+        match adopted_of_invocation check e with
+        | Some _ as hit -> found := hit
+        | None ->
+          (* Not into a lambda's body: one merely built here runs later, under
+             a scope this machine does not control. *)
+          Minicpp.iter_expr_children ~on_expr:(fun c -> ignore (visit_expr c))
+            ~on_stmts:(fun _ -> ()) e );
+      e
+    and visit stmt =
+      if Option.is_empty !found then
+        ignore (map_stmt visit_expr visit Fun.id stmt);
+      stmt
+    in
+    List.iter (fun s -> ignore (visit s)) stmts;
+    !found
 
 (** [only_entry n check] reports just the calls [check] finds against entry
     [n].
@@ -7276,30 +7380,22 @@ let fix_handler_bindings field_names cf_ps handler =
     @return Transformed body with frame-based stack structure, or the original
             [body] unchanged when the transformation is unsafe (branch
             dependencies on recursive calls) *)
-let transform_nontail ?(fn_name : string option) ?local_fix check tparams
+let transform_nontail ?(fn_name : string option) ?adopted check tparams
     params ret_ty body =
-  (* A local fixpoint that calls back into this function becomes a second
-     entry point of this machine rather than a machine of its own: two
-     machines cannot unwind each other's stack, so loopifying them separately
-     leaves the recursion in place.  Calls reaching it -- through its
-     self-parameter from inside, through its wrapper from outside -- are
-     recursive calls of this machine that target entry 1, and the lambdas that
-     used to implement it are dropped. *)
-  let local_fix =
-    Option.map
-      (fun lf -> {lf with lf_wrapper_id = find_fix_wrapper lf.lf_impl_id body})
-      local_fix
-  in
+  (* An adopted body becomes a second entry point of this machine rather than
+     a machine of its own: two machines cannot unwind each other's stack, so
+     loopifying them separately leaves the recursion in place.  The calls that
+     enter it are recursive calls of this machine targeting entry 1, and the
+     bindings it leaves dead are dropped. *)
   let check =
-    match local_fix with
+    match adopted with
     | None -> check
-    | Some lf -> any_checker [check; local_fix_checker ~entry:1 lf]
+    | Some ad -> any_checker [check; adopted_checker ~entry:1 ad]
   in
   let body =
-    match local_fix with
+    match adopted with
     | None -> body
-    | Some lf ->
-      drop_bindings (lf.lf_impl_id :: (match lf.lf_wrapper_id with Some w -> [w] | None -> [])) body
+    | Some ad -> drop_bindings ad.ad_drop body
   in
   (* This function's own parameters are described by the calls that re-enter
      it, not by those targeting an adopted fixpoint. *)
@@ -7323,26 +7419,26 @@ let transform_nontail ?(fn_name : string option) ?local_fix check tparams
       if not v then Id.Set.add id acc else acc)
       Id.Set.empty params varying
   in
-  (* Entry 1, when a local fixpoint was adopted: it is entered with its own
-     parameters {e and} the variables it captures from this function's scope,
-     which are in scope for a lambda but not for a dispatch loop re-entering
-     it from a popped frame.  Every one of them varies -- each re-entry rebinds
-     them -- so the mask is all-true.  A capture whose type this function
-     cannot name is not something a frame can carry, so the adoption is
-     abandoned rather than guessed at. *)
+  (* Entry 1, when a body was adopted: it is entered with its own parameters
+     {e and} the variables it captures from this function's scope, which are
+     in scope for a lambda but not for a dispatch loop re-entering it from a
+     popped frame.  Every one of them varies -- each re-entry rebinds them --
+     so the mask is all-true.  A capture whose type this function cannot name
+     is not something a frame can carry, so the adoption is abandoned rather
+     than guessed at. *)
   let entry1 =
-    Option.bind local_fix (fun lf ->
+    Option.bind adopted (fun ad ->
         let capture_params =
           List.filter_map
             (fun id -> Option.map (fun ty -> (id, ty)) (List.assoc_opt id env))
-            lf.lf_captures
+            ad.ad_captures
         in
-        if List.length capture_params <> List.length lf.lf_captures then None
+        if List.length capture_params <> List.length ad.ad_captures then None
         else
-          let ps = lf.lf_params @ capture_params in
+          let ps = ad.ad_params @ capture_params in
           Some
-            ( lf,
-              Id.of_string ("_Enter_" ^ name_of_self_id lf.lf_self_id),
+            ( ad,
+              Id.of_string ("_Enter_" ^ ad.ad_name),
               ps,
               List.map (fun _ -> true) ps ) )
   in
@@ -7372,7 +7468,7 @@ let transform_nontail ?(fn_name : string option) ?local_fix check tparams
   let entry1_emission =
     match entry1 with
     | None -> []
-    | Some (lf, enter_id, ps, en_varying) ->
+    | Some (ad, enter_id, ps, en_varying) ->
       let ctx1 =
         { ctx with
           er_varying = en_varying;
@@ -7383,7 +7479,7 @@ let transform_nontail ?(fn_name : string option) ?local_fix check tparams
       [ { ee_id = enter_id;
           ee_ps = List.map (fun _ -> false) ps;
           ee_params = ps;
-          ee_body = rewrite_enter_stmts ctx1 lf.lf_body } ]
+          ee_body = rewrite_enter_stmts ctx1 ad.ad_body } ]
   in
   (* Sort frames by name to ensure consistent ordering *)
   let frames =
@@ -8471,14 +8567,13 @@ let body_contains_lazy_factory body =
                        (forwarded to {!transform_nontail}).
     @param check       Call checker for identifying recursive calls
     @param tparams     Template parameter context
-    @param local_fix   A local fixpoint calling back into this function, to
-                       adopt as a second machine entry; see
-                       {!transform_nontail}
+    @param adopted     A body calling back into this function, to adopt as a
+                       second machine entry; see {!transform_nontail}
     @param params      Function parameters [(id, type)]
     @param ret_ty      Return type
     @param body        Function body statements
     @return what the transform did; see {!nontail_result}. *)
-let apply_nontail_loopification ?(param_inits = []) ?fn_name ?local_fix check
+let apply_nontail_loopification ?(param_inits = []) ?fn_name ?adopted check
     tparams params ret_ty body =
   let declined reason =
     {nt_body = body; nt_outcome = Lp_declined reason; nt_used_param_inits = false}
@@ -8488,7 +8583,7 @@ let apply_nontail_loopification ?(param_inits = []) ?fn_name ?local_fix check
   else
   let frame () =
     { nt_body =
-        transform_nontail ?fn_name ?local_fix check tparams params ret_ty body;
+        transform_nontail ?fn_name ?adopted check tparams params ret_ty body;
       nt_outcome = Lp_frame;
       nt_used_param_inits = false }
   in
@@ -8970,18 +9065,19 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
     end else
       (* Normal (non-lazy) function — existing path *)
       let kind = classify check body in
-      (* Recursion that lives inside a local fixpoint is visible to
-         {!classify} but out of reach of the transforms, which never rewrite
-         through a lambda: the machine they emit for it pushes nothing and its
-         loop runs once.  Note the fixpoint now, while the body still has the
-         Y-combinator shape, so the decline names it instead of reporting the
-         generic "a self-call survived". *)
-      let local_fix =
+      (* Recursion that lives inside a lambda -- a local fixpoint, or an
+         inlined mutual partner -- is visible to {!classify} but out of reach
+         of the transforms, which never rewrite through a lambda: the machine
+         they emit for it pushes nothing and its loop runs once.  Note the
+         body now, while it still has the shape the search recognises, so the
+         decline names it instead of reporting the generic "a self-call
+         survived". *)
+      let adopted =
         match kind with
-        | Nontail_recursion -> find_local_fix check body
+        | Nontail_recursion -> find_adopted check body
         | _ -> None
       in
-      let survived = Option.map local_fix_decline local_fix in
+      let survived = Option.map (fun ad -> ad.ad_decline) adopted in
       let body, strategy =
         match kind with
         | No_recursion -> (body, None)
@@ -8989,7 +9085,7 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
           (transform_tail check params ret_ty body, Some Lp_tail)
         | Nontail_recursion ->
           let r =
-            apply_nontail_loopification ?fn_name ?local_fix check tparams
+            apply_nontail_loopification ?fn_name ?adopted check tparams
               params ret_ty body
           in
           (r.nt_body, Some r.nt_outcome)

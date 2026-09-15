@@ -4,11 +4,12 @@ From Crane.Mapping Require Import Std.
 Module MutualTmcLoopify.
 
 (** Mutual recursion whose recursive calls are under a constructor (TMC).
-    [Crane Loopify] emits a [_Frame] worklist, but the body of the sibling
-    [odds] is inlined as an immediately-invoked lambda that still calls
-    [evens(...)] recursively, so the [while] loop runs exactly once and the
-    real recursion is unchanged.  Compiles, then overflows the stack under
-    ASan at moderate depth. *)
+
+    Loopification inlines the sibling [odds] into [evens] as an
+    immediately-invoked lambda, which still calls [evens].  That body is
+    adopted as a second entry point of [evens]'s frame machine, so both halves
+    of the mutual recursion push onto one stack and the extracted [evens] has
+    no C++ self-call -- it survives the depth this test exercises. *)
 
 Inductive mylist := mnil | mcons : nat -> mylist -> mylist.
 

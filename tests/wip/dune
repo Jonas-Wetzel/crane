@@ -69,16 +69,6 @@
 
 
 
-(subdir mutual_tmc_loopify
- (rule
-  (targets mutual_tmc_loopify.t.exe)
-  (deps MutualTmcLoopify.vo mutual_tmc_loopify.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} mutual_tmc_loopify.t.exe mutual_tmc_loopify.cpp mutual_tmc_loopify.t.cpp)))
- (rule
-  (alias runtest)
-  (deps mutual_tmc_loopify.t.exe)
-  (action (run ./mutual_tmc_loopify.t.exe))))
 
 (subdir cps_continuation_copy
  (rule
