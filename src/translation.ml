@@ -926,9 +926,20 @@ let rec render_cpp_expr_simple = function
 
 (** [is_access_path e] -- [e] is a chain of variable reads, dereferences,
     field selections and nullary accessors, so naming it twice in one
-    expression duplicates no work and no side effect.  That is exactly the
-    fragment {!render_cpp_expr_simple} can render, which is why it answers. *)
-let is_access_path e = render_cpp_expr_simple e <> None
+    expression duplicates no work and no side effect.
+
+    This used to be [render_cpp_expr_simple e <> None].  The two questions
+    ("can I spell this as a string?" and "is this free to duplicate?") happen
+    to have the same answer over most of the AST, but they are not the same
+    question: {!CPPraw} is renderable by definition and duplicable only if the
+    snippet inside it happens to be, so a shared definition is wrong for one
+    caller or the other as soon as either grows a case. *)
+let rec is_access_path = function
+  | CPPvar _ | CPPthis | CPPnullptr -> true
+  | CPPderef e | CPPget (e, _) | CPPget' (e, _) | CPPaccess (_, e, _) ->
+    is_access_path e
+  | CPPaccess_call (_, e, _, []) -> is_access_path e
+  | _ -> false
 
 (** Substitute placeholders in a Crane template string.
     Recognises: [%scrut], [%t{i}], [%b{i}a{j}], [%br{i}], [%a{i}].
