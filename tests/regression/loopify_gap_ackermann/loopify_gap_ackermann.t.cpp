@@ -1,7 +1,7 @@
-// Loopification gap (wip): Ackermann recurses with an inner result as the
-// argument of an outer recursive call (ack m' (ack_n n')).  That outer call is
-// not in a linearisable position, so the generated ack keeps a recursive
-// self-call.  The recursion is still correct; this test pins that behaviour.
+// Ackermann recurses with an inner result as the argument of an outer
+// recursive call (ack m' (ack_n n')), through a fixpoint local to ack.  The
+// local fixpoint becomes a second entry point of ack's frame machine, so the
+// generated ack is iterative: no C++ self-call, one stack for both entries.
 #include "loopify_gap_ackermann.h"
 
 #include <cassert>

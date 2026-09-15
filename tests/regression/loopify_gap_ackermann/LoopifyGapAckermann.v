@@ -2,13 +2,14 @@ From Stdlib Require Import Arith.PeanoNat.
 From Crane Require Import Mapping.NatIntStd.
 From Crane Require Extraction.
 
-(** Loopification gap: nested (non-structural in a single argument) recursion.
+(** Nested (non-structural in a single argument) recursion through a local
+    fixpoint.
 
     The Ackermann function recurses with the inner result as the argument of an
-    outer recursive call: [ack m' (ack_n n')].  The outer [ack] call is not in a
-    position loopify can linearise (its argument is itself a recursive
-    invocation of the enclosing [fix]), so the extracted [ack] keeps a recursive
-    self-call. *)
+    outer recursive call: [ack m' (ack_n n')].  [ack_n] is a fixpoint local to
+    [ack], so loopification adopts it as a second entry point of [ack]'s frame
+    machine -- [_Enter] for [ack], [_Enter_ack_n] for the local fixpoint, one
+    shared stack -- and the extracted [ack] has no C++ self-call. *)
 
 Set Crane Loopify.
 

@@ -3,14 +3,13 @@ Import ListNotations.
 From Crane Require Import Mapping.Std Mapping.NatIntStd.
 From Crane Require Extraction.
 
-(** Loopification gap: an inner [fix] that calls the outer function.
+(** An inner [fix] that calls the outer function.
 
     [rose_sum] folds over a rose tree's children with a nested [fix sum_list]
-    that recurses back into the outer [rose_sum].  As documented in loopify.ml,
-    an inner lambda/fixpoint calling the outer function cannot share the outer
-    function's frame stack (they have distinct frame variant types), so that
-    call is left as explicit C++ recursion — the extracted [rose_sum] still
-    calls itself. *)
+    that recurses back into the outer [rose_sum].  The nested fixpoint is
+    adopted as a second entry point of [rose_sum]'s frame machine, so both
+    recursions push onto one stack and the extracted [rose_sum] has no C++
+    self-call. *)
 
 Set Crane Loopify.
 

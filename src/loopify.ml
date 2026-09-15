@@ -65,14 +65,16 @@
     references and field accesses to [std::declval<T&>()] forms, making the
     [decltype] expression valid at struct scope.
 
-    {2 Limitations}
+    {2 Adopted Local Fixpoints}
 
-    {b Inner Lambdas Calling Outer Functions:} When an inner lambda (from Coq's
-    [let fix]) calls the outer function being loopified, the call remains as
-    explicit C++ recursion. This is because inner and outer functions have
-    incompatible frame types (different [std::variant] types) and cannot share
-    a stack. To avoid this, restructure the Coq code so that inner fixpoints
-    become top-level self-recursive helpers (possibly with fuel parameters).
+    A fixpoint local to the function being loopified (Coq's [let fix], or a
+    [fix] applied in argument position) is not loopified on its own: two
+    machines cannot share a stack, so each would unwind through the other and
+    the C++ would still recurse.  Instead the local fixpoint becomes a second
+    {e entry point} of the enclosing machine -- its own [_Enter_<name>] frame
+    carrying its parameters and the variables it captures, dispatched from the
+    same loop over the same [std::variant] stack.  See {!find_local_fix} for
+    which statements are searched, and {!machine_entry} for what an entry is.
 
     {2 Entry Points}
 
@@ -2432,7 +2434,11 @@ let transform_tail ?(param_inits = []) check params ret_ty body =
 
 type double_decomp = {
   dd_first_args : cpp_expr list;
+  dd_first_entry : int;
+      (** Machine entry point the first call re-enters -- see
+          {!decomposed.d_entry}. *)
   dd_second_args : cpp_expr list;
+  dd_second_entry : int;  (** Machine entry point the second call re-enters. *)
   dd_saved : cpp_expr list;
       (** Non-recursive expressions to save for combine *)
   dd_combine : cpp_expr list -> cpp_expr -> cpp_expr -> cpp_expr;
@@ -2468,6 +2474,12 @@ type decomposed = {
           {!infer_saved_types} once the frame is generated, in the
           environment that holds there. *)
   d_rec_args : cpp_expr list;  (** Arguments to pass to the recursive call *)
+  d_entry : int;
+      (** Which machine entry the call re-enters, as an index into
+          {!enter_rewrite_ctx.er_entries}.  A machine with an adopted local
+          fixpoint has more than one, and they differ in both frame struct and
+          parameter list, so the frame this decomposition pushes cannot be
+          assumed to be entry 0's. *)
   d_rebuild : cpp_expr list -> cpp_expr -> cpp_expr;
       (** [d_rebuild saved_vars result] reconstructs the final expression.
           [saved_vars] are CPPvar references to the saved values; [result] is
@@ -2573,6 +2585,7 @@ let rec decompose_single_call check expr =
           {
             d_saved = [e1];
             d_rec_args = cs.cs_args;
+          d_entry = cs.cs_entry;
             d_rebuild =
               (fun saved result -> CPPbinop (op, List.hd saved, result));
           }
@@ -2602,6 +2615,7 @@ let rec decompose_single_call check expr =
           {
             d_saved = [e2];
             d_rec_args = cs.cs_args;
+          d_entry = cs.cs_entry;
             d_rebuild =
               (fun saved result -> CPPbinop (op, result, List.hd saved));
           }
@@ -2638,6 +2652,7 @@ let rec decompose_single_call check expr =
         {
           d_saved = margs;
           d_rec_args = cs.cs_args;
+          d_entry = cs.cs_entry;
           d_rebuild =
             (fun saved result ->
               CPPaccess_call (Aarrow, result, method_id, saved) );
@@ -2711,6 +2726,7 @@ and decompose_funcall check res f args =
         {
           d_saved = f_extra @ non_rec_args;
           d_rec_args = cs.cs_args;
+          d_entry = cs.cs_entry;
           d_rebuild =
             (fun saved result ->
               let f' = if n_f > 0 then List.hd saved else f in
@@ -2741,6 +2757,7 @@ and decompose_double_call check expr =
         {
           d_saved = [];
           d_rec_args = cs.cs_args;
+          d_entry = cs.cs_entry;
           d_rebuild = (fun _saved result -> result);
         }
     | None -> decompose_single_call check e
@@ -2766,8 +2783,8 @@ and decompose_double_call check expr =
             dec2.d_rebuild (list_drop n1 saved) right )
         in
         Some
-          ( dec1.d_rec_args,
-            dec2.d_rec_args,
+          ( (dec1.d_rec_args, dec1.d_entry),
+            (dec2.d_rec_args, dec2.d_entry),
             dec1.d_saved @ dec2.d_saved,
             rebuild )
       | _ -> None
@@ -2776,11 +2793,13 @@ and decompose_double_call check expr =
   in
   let try_pair e1 e2 mk_combine =
     match try_pair_parts e1 e2 with
-    | Some (first_args, second_args, saved, rebuild) ->
+    | Some ((first_args, first_entry), (second_args, second_entry), saved, rebuild) ->
       Some
         {
           dd_first_args = first_args;
+          dd_first_entry = first_entry;
           dd_second_args = second_args;
+          dd_second_entry = second_entry;
           dd_saved = saved;
           dd_combine =
             (fun saved left right ->
@@ -2875,12 +2894,14 @@ and decompose_double_call check expr =
         List.map (fun (i, _) -> List.nth args i) non_rec_indexed
       in
       ( match try_pair_parts e1 e2 with
-      | Some (first_args, second_args, saved, rebuild) ->
+      | Some ((first_args, first_entry), (second_args, second_entry), saved, rebuild) ->
         let saved_offset = List.length saved in
         Some
           {
             dd_first_args = first_args;
+            dd_first_entry = first_entry;
             dd_second_args = second_args;
+            dd_second_entry = second_entry;
             dd_saved = saved @ non_rec_args;
             dd_combine =
               (fun saved left right ->
@@ -4967,6 +4988,7 @@ type entry_emission = {
     recurses -- one machine entered from two points is what actually removes
     the recursion. *)
 type local_fix = {
+  lf_impl_id : Id.t;  (** Binder of the [f_impl] lambda that does the work *)
   lf_self_id : Id.t;  (** The trailing [_self_f] self-reference parameter *)
   lf_params : (Id.t * cpp_type) list;
       (** Its parameters in source order, self-parameter dropped *)
@@ -4975,6 +4997,11 @@ type local_fix = {
           entry's frame has to carry these alongside {!lf_params}: they are in
           scope for the lambda but not for a dispatch loop that re-enters it
           from a popped frame. *)
+  lf_body : cpp_stmt list;  (** The [f_impl] lambda's body, entry 1's handler *)
+  lf_wrapper_id : Id.t option;
+      (** Binder of the wrapper lambda that ties the knot, when the enclosing
+          body binds one.  Calls the enclosing function makes to the fixpoint
+          go through it, so it is the name those call sites are keyed on. *)
 }
 
 (** The fixpoint's own name, recovered from its self-parameter [_self_f]. *)
@@ -4990,7 +5017,7 @@ let name_of_self_id self_id =
     them is left for {!loopify_inner_lambdas}, which handles it correctly on
     its own. *)
 let local_fix_of_stmt check = function
-  | Sasgn (_impl_id, Declare Tauto, CPPlambda {cl_params; cl_body; _}) -> (
+  | Sasgn (lf_impl_id, Declare Tauto, CPPlambda {cl_params; cl_body; _}) -> (
     let lparams = to_reversed cl_params in
     match ycomb_self_id lparams with
     | None -> None
@@ -5014,7 +5041,13 @@ let local_fix_of_stmt check = function
           |> List.filter (fun v -> not (List.exists (Id.equal v) bound))
           |> List.sort_uniq Id.compare
         in
-        Some {lf_self_id; lf_params; lf_captures} )
+        Some
+          { lf_impl_id;
+            lf_self_id;
+            lf_params;
+            lf_captures;
+            lf_body = cl_body;
+            lf_wrapper_id = None } )
   | _ -> None
 
 (** The statement lists that run as part of evaluating [e]: the bodies of
@@ -5076,6 +5109,110 @@ let local_fix_decline lf =
     (name_of_self_id lf.lf_self_id)
     (List.length lf.lf_params) captures
 
+(** Drop the bindings of [ids] wherever they occur in [stmts].
+
+    Once a local fixpoint becomes an entry point of the enclosing machine, the
+    lambdas that used to implement it are dead -- and not merely untidy: they
+    still hold a call the loopification postcondition would see, so leaving
+    them in gets the function reported as declined even though its machine is
+    correct. *)
+let rec drop_bindings ids stmts =
+  let dropped id = List.exists (Id.equal id) ids in
+  List.filter_map
+    (fun st ->
+      match st with
+      | Sasgn (id, Declare _, _) when dropped id -> None
+      | Sdecl (id, _) when dropped id -> None
+      | _ -> Some (map_stmt (drop_bindings_expr ids) (drop_bindings_stmt ids)
+                     Fun.id st) )
+    stmts
+
+(** [drop_bindings] on a single statement, collapsing a list result into a
+    block so that it fits where one statement is expected. *)
+and drop_bindings_stmt ids s =
+  match drop_bindings ids [s] with
+  | [] -> Sblock []
+  | [one] -> one
+  | many -> Sblock many
+
+(** [drop_bindings] reaching through expressions into the bodies of
+    immediately-invoked lambdas -- the statements {!find_local_fix} searches,
+    so the same ones a dropped binding can hide in. *)
+and drop_bindings_expr ids e =
+  match e with
+  | CPPfun_call (res, CPPlambda ({cl_params = {rev = []}; _} as l), ({rev = []} as noargs))
+    ->
+    CPPfun_call
+      (res, CPPlambda {l with cl_body = drop_bindings ids l.cl_body}, noargs)
+  | _ -> map_expr (drop_bindings_expr ids) Fun.id Fun.id e
+
+(** The binder of the wrapper lambda for the fixpoint bound to [impl_id]: the
+    one whose body passes [impl_id] to itself.  Searched the same way as
+    {!find_local_fix}, since translation emits the pair together. *)
+let find_fix_wrapper impl_id stmts =
+  let found = ref None in
+  let rec visit stmt =
+    if Option.is_empty !found then (
+      ( match stmt with
+      | Sasgn (wid, Declare Tauto, (CPPlambda _ as w))
+        when (not (Id.equal wid impl_id))
+             && List.exists (Id.equal impl_id) (free_vars_expr w) ->
+        found := Some wid
+      | _ -> () );
+      if Option.is_empty !found then
+        ignore (map_stmt visit_expr visit Fun.id stmt) );
+    stmt
+  and visit_expr e =
+    List.iter (fun body -> List.iter (fun s -> ignore (visit s)) body)
+      (invoked_bodies_expr e);
+    e
+  in
+  List.iter (fun s -> ignore (visit s)) stmts;
+  !found
+
+(** A checker matching the calls that reach [lf], reporting them as targeting
+    machine entry [entry].
+
+    Two call shapes reach one fixpoint: from inside, through its
+    self-reference parameter (which forwards itself as a trailing argument the
+    machine does not need); from outside, through the wrapper the enclosing
+    body binds. *)
+let local_fix_checker ~entry lf : call_checker =
+  (* The captured variables are arguments of the entry even though no call
+     site writes them: they reach the lambda through its closure, and a frame
+     re-entering the fixpoint has to carry them.  They are in scope wherever a
+     call to the fixpoint is, so appending them here -- in the order entry 1's
+     parameter list is built -- is what makes the two agree. *)
+  let captured = List.map (fun id -> CPPvar id) lf.lf_captures in
+  fun e ->
+    match e with
+    | CPPfun_call (_, CPPvar id, args) when Id.equal id lf.lf_self_id -> (
+      match call_args args with
+      | _self_arg :: rest_rev ->
+        Some (mk_call_site ~entry (List.rev rest_rev @ captured))
+      | [] -> None )
+    | CPPfun_call (_, CPPvar id, args)
+      when Option.equal Id.equal (Some id) lf.lf_wrapper_id ->
+      Some (mk_call_site ~entry (List.rev (call_args args) @ captured))
+    | _ -> None
+
+(** [only_entry n check] reports just the calls [check] finds against entry
+    [n].
+
+    Per-parameter analyses -- which parameters vary across calls, which are
+    safe to park as pointers -- are about one entry's parameter list, so they
+    must not be shown an argument list belonging to another entry: the two
+    have no positional correspondence, and generally not even the same
+    length. *)
+let only_entry entry (check : call_checker) : call_checker =
+ fun e ->
+  match check e with Some cs when cs.cs_entry = entry -> Some cs | _ -> None
+
+(** A checker that tries each of [checkers] in turn, so one machine can be
+    driven by the calls that reach any of its entry points. *)
+let any_checker (checkers : call_checker list) : call_checker =
+ fun e -> List.find_map (fun c -> c e) checkers
+
 (** The parameters the nontail frame-based transformation threads through its
     three mutually-recursive rewrite functions
     ({!rewrite_enter_lambda_return}, {!rewrite_enter_stmts},
@@ -5121,6 +5258,14 @@ let entry_of ctx cs = List.nth ctx.er_entries cs.cs_entry
     the positions that vary across calls to that entry. The invariant ones are
     in scope at the handler already, so parking them would be dead weight. *)
 let enter_args_for ctx cs = filter_by_mask (entry_of ctx cs).en_varying cs.cs_args
+
+(** The frame that re-enters machine entry [entry] with [args], narrowed to
+    that entry's varying positions.  {!make_enter_for} is this for a call site
+    that is still to hand; a decomposition that has kept only its arguments
+    reaches the same frame through {!decomposed.d_entry}. *)
+let make_enter_at ctx entry args =
+  let en = List.nth ctx.er_entries entry in
+  CPPstruct_id (en.en_enter_id, [], filter_by_mask en.en_varying args)
 
 (** The [_Enter]-style frame expression that enters [cs]'s target.
 
@@ -5374,7 +5519,7 @@ let emit_single_call_frame ctx (d : decomposed) ~make_handler =
     ~saved_exprs:saved_exprs_conv ~env ~handler;
   [
     make_stack_push (CPPstruct_id (Id.of_string call_name, [], saved_exprs_conv));
-    make_stack_push (make_enter_frame (filter_by_mask varying d.d_rec_args));
+    make_stack_push (make_enter_at ctx d.d_entry d.d_rec_args);
   ]
 
 (** Emit chained [_AfterN] and [_CombineN] frames for a double-call decomposition.
@@ -5442,7 +5587,8 @@ let emit_double_call_frames ctx dd ~extra_saved ~extra_types ~make_final_handler
     ~handler:call2_handler;
   (* After: receives first result, pushes Combine + Enter for second call *)
   let call1_name = make_call_frame_name "_After" call_counter seen ?branch_ctx () in
-  let second_varying = filter_by_mask varying dd.dd_second_args in
+  let second_entry = List.nth ctx.er_entries dd.dd_second_entry in
+  let second_varying = filter_by_mask second_entry.en_varying dd.dd_second_args in
   let call1_saved_exprs = second_varying @ dd_must_store @ extra_saved in
   let call1_saved_types =
     infer_saved_types tparams env second_varying @ dd_must_store_types @ extra_types
@@ -5462,7 +5608,7 @@ let emit_double_call_frames ctx dd ~extra_saved ~extra_types ~make_final_handler
     [
       make_stack_push
         (CPPstruct_id (Id.of_string call2_name, [], call2_push_args));
-      make_stack_push (make_enter_frame second_args);
+      make_stack_push (CPPstruct_id (second_entry.en_enter_id, [], second_args));
     ]
   in
   register_frame frames_ref ~name:call1_name
@@ -5471,8 +5617,7 @@ let emit_double_call_frames ctx dd ~extra_saved ~extra_types ~make_final_handler
   [
     make_stack_push
       (CPPstruct_id (Id.of_string call1_name, [], call1_saved_exprs_conv));
-    make_stack_push
-      (make_enter_frame (filter_by_mask varying dd.dd_first_args));
+    make_stack_push (make_enter_at ctx dd.dd_first_entry dd.dd_first_args);
   ]
 
 (** Rewrite a single return statement for the [_Enter] handler in frame-based
@@ -5577,10 +5722,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
             in
             let push_enter =
               make_stack_push
-                (CPPstruct_id
-                   ( id_enter,
-                     [],
-                     filter_by_mask varying d.d_rec_args ) )
+                (make_enter_at ctx d.d_entry d.d_rec_args)
             in
             [push_final; push_enter]
           in
@@ -5590,11 +5732,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
           [
             make_stack_push
               (CPPstruct_id (Id.of_string inter_call_name, [], other_saved));
-            make_stack_push
-              (CPPstruct_id
-                 ( id_enter,
-                   [],
-                   filter_by_mask varying rec_cs.cs_args ) );
+            make_stack_push (make_enter_for ctx rec_cs);
           ]
         | [] ->
           (* No recursive calls in saved expressions — standard single-call frame *)
@@ -5660,11 +5798,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
                     List.nth saved_vars pos )
               in
               [
-                make_stack_push
-                  (CPPstruct_id
-                     ( id_enter,
-                       [],
-                       filter_by_mask varying outer_args ) );
+                make_stack_push (make_enter_at ctx cs.cs_entry outer_args);
               ]
             in
             register_frame frames_ref ~name:call_name ~saved_types
@@ -5674,11 +5808,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
               [
                 make_stack_push
                   (CPPstruct_id (Id.of_string call_name, [], non_rec_args));
-                make_stack_push
-                  (CPPstruct_id
-                     ( id_enter,
-                       [],
-                       filter_by_mask varying inner_cs.cs_args ) );
+                make_stack_push (make_enter_for ctx inner_cs);
               ]
             | None ->
             match decompose_single_call check rec_arg with
@@ -5708,10 +5838,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
                 make_stack_push
                   (CPPstruct_id (Id.of_string inner_call_name, [], d.d_saved));
                 make_stack_push
-                  (CPPstruct_id
-                     ( id_enter,
-                       [],
-                       filter_by_mask varying d.d_rec_args ) );
+                  (make_enter_at ctx d.d_entry d.d_rec_args);
               ]
             | None ->
               (* Cannot decompose — execute inline *)
@@ -5812,7 +5939,7 @@ let rec rewrite_enter_lambda_return ctx stmt =
             tyargs,
             List.map
               (fun (ps, ret_ty2, body) ->
-                let lenv = collect_type_env body @ env in
+                let lenv = collect_type_env body @ ps @ env in
                 let br_ctx = match ps with
                   | (id, _) :: _ -> Some (Id.to_string id)
                   | [] -> None
@@ -7149,11 +7276,37 @@ let fix_handler_bindings field_names cf_ps handler =
     @return Transformed body with frame-based stack structure, or the original
             [body] unchanged when the transformation is unsafe (branch
             dependencies on recursive calls) *)
-let transform_nontail ?(fn_name : string option) check tparams params ret_ty
-    body =
-  let varying = find_varying_params check params body in
+let transform_nontail ?(fn_name : string option) ?local_fix check tparams
+    params ret_ty body =
+  (* A local fixpoint that calls back into this function becomes a second
+     entry point of this machine rather than a machine of its own: two
+     machines cannot unwind each other's stack, so loopifying them separately
+     leaves the recursion in place.  Calls reaching it -- through its
+     self-parameter from inside, through its wrapper from outside -- are
+     recursive calls of this machine that target entry 1, and the lambdas that
+     used to implement it are dropped. *)
+  let local_fix =
+    Option.map
+      (fun lf -> {lf with lf_wrapper_id = find_fix_wrapper lf.lf_impl_id body})
+      local_fix
+  in
+  let check =
+    match local_fix with
+    | None -> check
+    | Some lf -> any_checker [check; local_fix_checker ~entry:1 lf]
+  in
+  let body =
+    match local_fix with
+    | None -> body
+    | Some lf ->
+      drop_bindings (lf.lf_impl_id :: (match lf.lf_wrapper_id with Some w -> [w] | None -> [])) body
+  in
+  (* This function's own parameters are described by the calls that re-enter
+     it, not by those targeting an adopted fixpoint. *)
+  let own = only_entry 0 check in
+  let varying = find_varying_params own params body in
   let binding_env = collect_binding_env body in
-  let pointer_safe = tail_pointer_safe_flags check params body ~binding_env () in
+  let pointer_safe = tail_pointer_safe_flags own params body ~binding_env () in
   let varying_params = filter_by_mask varying params in
   let pointer_safe_varying = filter_by_mask varying pointer_safe in
   let varying_param_types = List.map snd varying_params in
@@ -7170,9 +7323,37 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
       if not v then Id.Set.add id acc else acc)
       Id.Set.empty params varying
   in
+  (* Entry 1, when a local fixpoint was adopted: it is entered with its own
+     parameters {e and} the variables it captures from this function's scope,
+     which are in scope for a lambda but not for a dispatch loop re-entering
+     it from a popped frame.  Every one of them varies -- each re-entry rebinds
+     them -- so the mask is all-true.  A capture whose type this function
+     cannot name is not something a frame can carry, so the adoption is
+     abandoned rather than guessed at. *)
+  let entry1 =
+    Option.bind local_fix (fun lf ->
+        let capture_params =
+          List.filter_map
+            (fun id -> Option.map (fun ty -> (id, ty)) (List.assoc_opt id env))
+            lf.lf_captures
+        in
+        if List.length capture_params <> List.length lf.lf_captures then None
+        else
+          let ps = lf.lf_params @ capture_params in
+          Some
+            ( lf,
+              Id.of_string ("_Enter_" ^ name_of_self_id lf.lf_self_id),
+              ps,
+              List.map (fun _ -> true) ps ) )
+  in
   (* Loopifying a function on its own gives a machine with one entry: the
      function itself, entered through [_Enter]. *)
-  let entries = [{en_enter_id = id_enter; en_varying = varying}] in
+  let entries =
+    {en_enter_id = id_enter; en_varying = varying}
+    :: ( match entry1 with
+       | Some (_, enter_id, _, en_varying) -> [{en_enter_id = enter_id; en_varying}]
+       | None -> [] )
+  in
   let ctx = { er_check = check; er_entries = entries;
                er_varying = varying; er_tparams = tparams;
                er_env = env; er_ret_ty = ret_ty;
@@ -7183,6 +7364,27 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
                er_invariant_params = invariant_params }
   in
   let rewritten_body = List.map (rewrite_enter_stmt ctx) body in
+  (* Entry 1's handler is the adopted fixpoint's own body, rewritten under a
+     context describing its parameters rather than this function's.  Both
+     handlers share the frame accumulator and the call counter, so the resume
+     frames either of them needs land in this one machine -- which is why this
+     runs before the frames are collected below. *)
+  let entry1_emission =
+    match entry1 with
+    | None -> []
+    | Some (lf, enter_id, ps, en_varying) ->
+      let ctx1 =
+        { ctx with
+          er_varying = en_varying;
+          er_env = env @ ps;
+          er_varying_param_types = List.map snd ps;
+          er_invariant_params = Id.Set.empty }
+      in
+      [ { ee_id = enter_id;
+          ee_ps = List.map (fun _ -> false) ps;
+          ee_params = ps;
+          ee_body = rewrite_enter_stmts ctx1 lf.lf_body } ]
+  in
   (* Sort frames by name to ensure consistent ordering *)
   let frames =
     List.sort (fun a b -> String.compare a.cf_name b.cf_name) !frames_ref
@@ -7194,8 +7396,9 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
   (* One emission per entry point.  Loopifying a function on its own yields a
      single one: the function itself, entered through [_Enter]. *)
   let emissions =
-    [{ee_id = id_enter; ee_ps = pointer_safe_varying;
-      ee_params = varying_params; ee_body = rewritten_body}]
+    {ee_id = id_enter; ee_ps = pointer_safe_varying;
+     ee_params = varying_params; ee_body = rewritten_body}
+    :: entry1_emission
   in
   let ee_name ee = Id.to_string ee.ee_id in
   let all_frame_ps =
@@ -8268,11 +8471,14 @@ let body_contains_lazy_factory body =
                        (forwarded to {!transform_nontail}).
     @param check       Call checker for identifying recursive calls
     @param tparams     Template parameter context
+    @param local_fix   A local fixpoint calling back into this function, to
+                       adopt as a second machine entry; see
+                       {!transform_nontail}
     @param params      Function parameters [(id, type)]
     @param ret_ty      Return type
     @param body        Function body statements
     @return what the transform did; see {!nontail_result}. *)
-let apply_nontail_loopification ?(param_inits = []) ?fn_name check
+let apply_nontail_loopification ?(param_inits = []) ?fn_name ?local_fix check
     tparams params ret_ty body =
   let declined reason =
     {nt_body = body; nt_outcome = Lp_declined reason; nt_used_param_inits = false}
@@ -8281,7 +8487,8 @@ let apply_nontail_loopification ?(param_inits = []) ?fn_name check
     declined "recursive call in a branch condition or dispatch scrutinee"
   else
   let frame () =
-    { nt_body = transform_nontail ?fn_name check tparams params ret_ty body;
+    { nt_body =
+        transform_nontail ?fn_name ?local_fix check tparams params ret_ty body;
       nt_outcome = Lp_frame;
       nt_used_param_inits = false }
   in
@@ -8769,12 +8976,12 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
          loop runs once.  Note the fixpoint now, while the body still has the
          Y-combinator shape, so the decline names it instead of reporting the
          generic "a self-call survived". *)
-      let survived =
+      let local_fix =
         match kind with
-        | Nontail_recursion ->
-          Option.map local_fix_decline (find_local_fix check body)
+        | Nontail_recursion -> find_local_fix check body
         | _ -> None
       in
+      let survived = Option.map local_fix_decline local_fix in
       let body, strategy =
         match kind with
         | No_recursion -> (body, None)
@@ -8782,8 +8989,8 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
           (transform_tail check params ret_ty body, Some Lp_tail)
         | Nontail_recursion ->
           let r =
-            apply_nontail_loopification ?fn_name check tparams params ret_ty
-              body
+            apply_nontail_loopification ?fn_name ?local_fix check tparams
+              params ret_ty body
           in
           (r.nt_body, Some r.nt_outcome)
       in

@@ -67,27 +67,7 @@
   (deps fibst_cofix_repro.t.exe)
   (action (run ./fibst_cofix_repro.t.exe))))
 
-(subdir loopify_gap_nested_fix
- (rule
-  (targets loopify_gap_nested_fix.t.exe)
-  (deps LoopifyGapNestedFix.vo loopify_gap_nested_fix.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} loopify_gap_nested_fix.t.exe loopify_gap_nested_fix.cpp loopify_gap_nested_fix.t.cpp)))
- (rule
-  (alias runtest)
-  (deps loopify_gap_nested_fix.t.exe)
-  (action (run ./loopify_gap_nested_fix.t.exe))))
 
-(subdir loopify_gap_ackermann
- (rule
-  (targets loopify_gap_ackermann.t.exe)
-  (deps LoopifyGapAckermann.vo loopify_gap_ackermann.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} loopify_gap_ackermann.t.exe loopify_gap_ackermann.cpp loopify_gap_ackermann.t.cpp)))
- (rule
-  (alias runtest)
-  (deps loopify_gap_ackermann.t.exe)
-  (action (run ./loopify_gap_ackermann.t.exe))))
 
 (subdir mutual_tmc_loopify
  (rule

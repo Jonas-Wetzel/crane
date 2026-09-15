@@ -1,7 +1,7 @@
-// Loopification gap (wip): rose_sum folds over children with a nested fix that
-// calls the outer rose_sum.  An inner fixpoint calling the outer function can't
-// share its frame stack, so that call is left as explicit C++ recursion.  The
-// recursion is still correct; this test pins that behaviour down.
+// rose_sum folds over a rose tree's children with a nested fix that calls the
+// outer rose_sum.  The nested fixpoint is adopted as a second entry point of
+// rose_sum's frame machine, so both recursions share one stack and the
+// generated rose_sum is iterative: no C++ self-call.
 #include "loopify_gap_nested_fix.h"
 
 #include <cassert>
