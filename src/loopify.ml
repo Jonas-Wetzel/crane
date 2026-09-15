@@ -612,6 +612,67 @@ let unstable_locals ~(stable : Id.Set.t) (body : cpp_stmt list) : Id.Set.t =
   List.iter walk body;
   !unstable
 
+(** {3 The Y-combinator idiom for local fixpoints}
+
+    {!Translation.gen_local_fix_by_ref} emits Coq's [let fix] as a pair of
+    lambdas: an [f_impl] taking its own self-reference as a trailing parameter,
+    and an [f] that ties the knot by passing [f_impl] to itself. These
+    recognise that shape. They sit here, beside the other checkers, because
+    both {!transform_nontail} and {!loopify_inner_lambdas} need them. *)
+
+(** The prefix {!Translation.gen_local_fix_by_ref} gives a local fixpoint's
+    self-reference parameter. *)
+let self_param_prefix = "_self_"
+
+(** Whether [id] is such a self-reference parameter. *)
+let is_self_param_id id =
+  let s = Id.to_string id in
+  let p = self_param_prefix in
+  String.length s > String.length p && String.sub s 0 (String.length p) = p
+
+(** The self-reference parameter of a lambda written in the idiom, if it is one.
+
+    Only a single (non-mutual) fixpoint qualifies: a mutual group forwards one
+    self-reference per partner, and those the callers here cannot linearise. *)
+let ycomb_self_id lparams =
+  let self_count =
+    List.length
+      (List.filter
+         (fun (_, io) ->
+           match io with Some id -> is_self_param_id id | None -> false )
+         lparams)
+  in
+  match List.rev lparams with
+  | (_, Some sid) :: _ when is_self_param_id sid && self_count = 1 -> Some sid
+  | _ -> None
+
+(** A checker matching the fixpoint's calls to itself through [self_id]. *)
+let self_checker self_id : call_checker =
+ fun e ->
+  match e with
+  | CPPfun_call (_, CPPvar id, args) when Id.equal id self_id -> (
+    (* Drop the trailing self-forward argument. *)
+    match call_args args with
+    | _self_arg :: rest_rev ->
+      Some (mk_call_site (List.rev rest_rev))
+    | [] -> None )
+  | _ -> None
+
+
+(** The receiver of a recursive call, with the wrappers that only re-spell an
+    object stripped off.  [std::move] is one: it is a cast, so moving out of
+    [this] still names the storage of [this] rather than making a temporary of
+    its own. *)
+let rec receiver_storage = function CPPmove e -> receiver_storage e | e -> e
+
+(** Whether a recursive call's receiver is a value temporary, whose address
+    would dangle once parked in an [_Enter] frame.  A receiver that names
+    existing storage -- a variable, [this], or a smart pointer it dereferences
+    -- is not. *)
+let receiver_is_value = function
+  | CPPderef _ | CPPvar _ | CPPthis -> false
+  | _ -> true
+
 (** Build a call checker for struct methods. Matches [CPPaccess_call] on
     [method_name] and, when [has_self_param] is true, includes the receiver
     pointer as the first argument. Also matches [CPPglob] calls that resolve to
@@ -629,20 +690,6 @@ let unstable_locals ~(stable : Id.Set.t) (body : cpp_stmt list) : Id.Set.t =
                         list of [CPPfun_call] forms. Used to extract and remove
                         the receiver from over-long argument lists.
     @param method_name  The method name to match on. *)
-(** The receiver of a recursive call, with the wrappers that only re-spell an
-    object stripped off.  [std::move] is one: it is a cast, so moving out of
-    [this] still names the storage of [this] rather than making a temporary of
-    its own. *)
-let rec receiver_storage = function CPPmove e -> receiver_storage e | e -> e
-
-(** Whether a recursive call's receiver is a value temporary, whose address
-    would dangle once parked in an [_Enter] frame.  A receiver that names
-    existing storage -- a variable, [this], or a smart pointer it dereferences
-    -- is not. *)
-let receiver_is_value = function
-  | CPPderef _ | CPPvar _ | CPPthis -> false
-  | _ -> true
-
 let method_checker
     ~(n_params : int)
     ~(has_self_param : bool)
@@ -7755,35 +7802,6 @@ let loopify_inner_lambdas ~tparams body =
      unreferenced params without a name, so there is no [-Wunused-parameter].
      Only single (non-mutual) fixpoints are handled; mutual ones (multiple
      self-params) and non-tail recursion are left unchanged. *)
-  let self_param_prefix = "_self_" in
-  let is_self_param_id id =
-    let s = Id.to_string id in
-    let p = self_param_prefix in
-    String.length s > String.length p && String.sub s 0 (String.length p) = p
-  in
-  let ycomb_self_id lparams =
-    let self_count =
-      List.length
-        (List.filter
-           (fun (_, io) ->
-             match io with Some id -> is_self_param_id id | None -> false )
-           lparams)
-    in
-    match List.rev lparams with
-    | (_, Some sid) :: _ when is_self_param_id sid && self_count = 1 -> Some sid
-    | _ -> None
-  in
-  let self_checker self_id : call_checker =
-   fun e ->
-    match e with
-    | CPPfun_call (_, CPPvar id, args) when Id.equal id self_id -> (
-      (* Drop the trailing self-forward argument. *)
-      match call_args args with
-      | _self_arg :: rest_rev ->
-        Some (mk_call_site (List.rev rest_rev))
-      | [] -> None )
-    | _ -> None
-  in
   let try_loopify_ycomb lparams ret_ty_opt lbody =
     match ycomb_self_id lparams with
     | None -> None
