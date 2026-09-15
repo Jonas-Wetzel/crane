@@ -212,8 +212,9 @@ val id_of_name : Name.t -> Id.t
 
 (** Move a name out of the space Crane reserves for the names it invents
     itself ([_Frame], [_stack], ...) by carrying its leading underscores to
-    the end.  Unchanged when there are none, or when the name is all
-    underscores. *)
+    the end.  Unchanged when there are none, when the name is all underscores,
+    or when a digit would be left in front ([_0] stays [_0]; [0_] is not an
+    identifier). *)
 val unreserve_leading_underscore : string -> string
 
 (** Extract the Id.t from an ml_ident. *)

@@ -208,8 +208,8 @@ struct NestedInductiveNoDrain {
           if (_alt->a1 && _alt->a1.use_count() == 1) {
             std::atomic_thread_fence(std::memory_order_acquire);
             auto _lp = _alt->a1.get();
-            while (std::holds_alternative<typename Lst<tree>::Cons>(_lp->v())) {
-              auto &_lc = std::get<typename Lst<tree>::Cons>(_lp->v_mut());
+            while (std::holds_alternative<typename lst<tree>::Cons>(_lp->v())) {
+              auto &_lc = std::get<typename lst<tree>::Cons>(_lp->v_mut());
               _stack.push_back(std::make_shared<tree>(std::move(_lc.a0)));
               if (_lc.a1 && _lc.a1.use_count() == 1) {
                 std::atomic_thread_fence(std::memory_order_acquire);

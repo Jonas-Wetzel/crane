@@ -81,3 +81,14 @@
   (deps cps_continuation_copy.t.exe)
   (action (run ./cps_continuation_copy.t.exe))))
 
+
+(subdir erased_pred_cond
+ (rule
+  (targets erased_pred_cond.t.exe)
+  (deps ErasedPredCond.vo erased_pred_cond.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} erased_pred_cond.t.exe erased_pred_cond.cpp erased_pred_cond.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps erased_pred_cond.t.exe)
+  (action (run ./erased_pred_cond.t.exe))))

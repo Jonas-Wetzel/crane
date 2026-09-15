@@ -370,10 +370,10 @@ struct NestedInd {
           if (_alt->a1 && _alt->a1.use_count() == 1) {
             std::atomic_thread_fence(std::memory_order_acquire);
             auto _lp = _alt->a1.get();
-            while (std::holds_alternative<typename Custom_list<rose<A>>::Ccons>(
+            while (std::holds_alternative<typename custom_list<rose<A>>::Ccons>(
                 _lp->v())) {
               auto &_lc =
-                  std::get<typename Custom_list<rose<A>>::Ccons>(_lp->v_mut());
+                  std::get<typename custom_list<rose<A>>::Ccons>(_lp->v_mut());
               _stack.push_back(std::make_shared<rose<A>>(std::move(_lc.a0)));
               if (_lc.a1 && _lc.a1.use_count() == 1) {
                 std::atomic_thread_fence(std::memory_order_acquire);

@@ -862,7 +862,10 @@ let rec pp_cpp_type ?(lead = true) par vl t =
           ++ struct_qualifier_for r' cap
           ++ cap_pp
           ++ templates
-        else if is_merged_inductive_cached r' then
+        else if is_merged_inductive_cached r' && not (is_local_inductive r') then
+          (* A local inductive is a sibling member of the enclosing module
+             struct, so it is in scope under its own name; the merged-wrapper
+             spelling ([Opt] for [opt]) names nothing there. *)
           let cap = String.capitalize_ascii type_name_str in
           if needs_ns && Table.modular () then
             str (cap ^ "::" ^ cap) ++ templates

@@ -42,15 +42,20 @@ let id_of_name = function
     itself -- the loopified frames ([_Frame], [_Enter], [_stack], [_result])
     and the generated members -- by carrying its leading underscores to the
     end.  C++ reserves [_X] at global scope to the implementation anyway.
-    Returns the name unchanged when it does not start with an underscore, or
-    when it is nothing but underscores. *)
+    Returns the name unchanged when it does not start with an underscore, when
+    it is nothing but underscores, or when carrying them would leave a digit in
+    front -- [_0] must not become [0_], which is no identifier at all.  That
+    last case needs no rotation anyway: Crane invents no name of the form
+    [_<digit>], so [_0] has nothing to collide with. *)
 let unreserve_leading_underscore s =
   let n = String.length s in
   let i = ref 0 in
   while !i < n && s.[!i] = '_' do
     incr i
   done;
-  if !i = 0 || !i = n then s else String.sub s !i (n - !i) ^ "_"
+  let is_digit c = c >= '0' && c <= '9' in
+  if !i = 0 || !i = n || is_digit s.[!i] then s
+  else String.sub s !i (n - !i) ^ "_"
 
 (** Converts an [ml_ident] to an [Id.t].  The binder comes from the Rocq
     source, so a leading underscore is moved to the end: that spelling belongs
