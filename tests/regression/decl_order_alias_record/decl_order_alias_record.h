@@ -12,8 +12,8 @@
 
 template <typename A> struct List;
 enum class Cop;
-struct prog;
 template <typename target> struct Instr;
+struct prog;
 
 template <typename A> struct List {
   // TYPES
@@ -131,13 +131,6 @@ public:
 };
 enum class Cop { CEQ, CLT };
 
-struct prog {
-  List<final_instr> code;
-  uint64_t nregs;
-};
-
-using final_instr = Instr<uint64_t>;
-
 template <typename target> struct Instr {
   // TYPES
   struct IGo {
@@ -199,6 +192,13 @@ public:
 
   // ACCESSORS
   const variant_t &v() const { return v_; }
+};
+
+using final_instr = Instr<uint64_t>;
+
+struct prog {
+  List<final_instr> code;
+  uint64_t nregs;
 };
 
 const prog sample =

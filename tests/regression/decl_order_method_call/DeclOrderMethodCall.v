@@ -2,16 +2,16 @@ From Crane Require Import Mapping.Std.
 Require Import Crane.Mapping.NatIntStd.
 From Crane Require Extraction.
 From Stdlib Require Import List.
-From CraneTestsWIP Require Import decl_order_method_call.Regs.
+From CraneTestsRegression Require Import decl_order_method_call.Regs.
 Import ListNotations.
 
 (**
-  Bug: a method calls into a struct declared after it.
+  As decl_order_method_alias, but without the type alias.
 
-  [write_r] takes an [rv], so it becomes an inline method of [struct Rv].
-  Its body calls [Regs::replace_nth], and [struct Regs] is emitted after
-  every global-scope type, so the header does not compile. There is no
-  type alias here: the call alone is enough.
+  [write_r] calls [Regs::replace_nth], so it stays a static function of
+  [struct Regs]: as an inline method of [struct Rv] it would call into a
+  struct declared after it. Crane used to make it a method; the call alone
+  was enough to break the header.
 *)
 
 Definition written_second : nat :=

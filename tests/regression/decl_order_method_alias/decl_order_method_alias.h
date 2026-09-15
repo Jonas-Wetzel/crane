@@ -1,5 +1,5 @@
-#ifndef INCLUDED_DECL_ORDER_METHOD_CALL
-#define INCLUDED_DECL_ORDER_METHOD_CALL
+#ifndef INCLUDED_DECL_ORDER_METHOD_ALIAS
+#define INCLUDED_DECL_ORDER_METHOD_ALIAS
 
 #include "crane_fn.h"
 #include "small_vector.h"
@@ -122,33 +122,29 @@ public:
 
   // ACCESSORS
   const variant_t &v() const { return v_; }
-
-  std::optional<List<Rv>> write_r(const List<Rv> &x0_, uint64_t x1_) const {
-    return Regs::template replace_nth<Rv>(x0_, x1_, *this);
-  }
 };
 
-struct Regs {
+using rfile = List<Rv>;
+
+struct RegFile {
   template <typename T1>
   static std::optional<List<T1>> replace_nth(const List<T1> &l, uint64_t i,
                                              T1 x);
+  static std::optional<rfile> write_r(rfile x0_, uint64_t x1_, const Rv &x2_);
 };
 
+const std::optional<rfile> written = RegFile::write_r(
+    List<Rv>::cons(Rv::ru(),
+                   List<Rv>::cons(Rv::rs(UINT64_C(1)),
+                                  List<Rv>::cons(Rv::ru(), List<Rv>::nil()))),
+    UINT64_C(1), Rv::rs(UINT64_C(7)));
 const uint64_t written_second = []() -> uint64_t {
-  auto _cs =
-      Rv::rs(UINT64_C(7))
-          .write_r(
-              List<Rv>::cons(
-                  Rv::ru(),
-                  List<Rv>::cons(Rv::rs(UINT64_C(1)),
-                                 List<Rv>::cons(Rv::ru(), List<Rv>::nil()))),
-              UINT64_C(1));
-  if (_cs.has_value()) {
-    const List<Rv> &l = *_cs;
-    if (std::holds_alternative<typename List<Rv>::Nil>(l.v())) {
+  if (written.has_value()) {
+    const List<Rv> &r = *written;
+    if (std::holds_alternative<typename List<Rv>::Nil>(r.v())) {
       return UINT64_C(0);
     } else {
-      const auto &[a0, a1] = std::get<typename List<Rv>::Cons>(l.v());
+      const auto &[a0, a1] = std::get<typename List<Rv>::Cons>(r.v());
       auto &&_sv0 = *a1;
       if (std::holds_alternative<typename List<Rv>::Nil>(_sv0.v())) {
         return UINT64_C(0);
@@ -167,8 +163,8 @@ const uint64_t written_second = []() -> uint64_t {
   }
 }();
 const bool out_of_range = []() -> bool {
-  auto _cs =
-      Rv::ru().write_r(List<Rv>::cons(Rv::ru(), List<Rv>::nil()), UINT64_C(5));
+  auto _cs = RegFile::write_r(List<Rv>::cons(Rv::ru(), List<Rv>::nil()),
+                              UINT64_C(5), Rv::ru());
   if (_cs.has_value()) {
     const List<Rv> &_x = *_cs;
     return false;
@@ -178,7 +174,8 @@ const bool out_of_range = []() -> bool {
 }();
 
 template <typename T1>
-std::optional<List<T1>> Regs::replace_nth(const List<T1> &l, uint64_t i, T1 x) {
+std::optional<List<T1>> RegFile::replace_nth(const List<T1> &l, uint64_t i,
+                                             T1 x) {
   if (std::holds_alternative<typename List<T1>::Nil>(l.v())) {
     return std::optional<List<T1>>();
   } else {
@@ -187,7 +184,7 @@ std::optional<List<T1>> Regs::replace_nth(const List<T1> &l, uint64_t i, T1 x) {
       return std::make_optional<List<T1>>(List<T1>::cons(x, *a1));
     } else {
       uint64_t i_ = i - 1;
-      auto _cs = Regs::template replace_nth<T1>(*a1, i_, x);
+      auto _cs = RegFile::template replace_nth<T1>(*a1, i_, x);
       if (_cs.has_value()) {
         const List<T1> &t_ = *_cs;
         return std::make_optional<List<T1>>(List<T1>::cons(a0, t_));
@@ -198,4 +195,4 @@ std::optional<List<T1>> Regs::replace_nth(const List<T1> &l, uint64_t i, T1 x) {
   }
 }
 
-#endif // INCLUDED_DECL_ORDER_METHOD_CALL
+#endif // INCLUDED_DECL_ORDER_METHOD_ALIAS
