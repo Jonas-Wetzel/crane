@@ -1121,6 +1121,105 @@ let mark_higher_order_projections struc =
     A type argument is the signal: an instance used statically appears as a
     definition's parameter, which becomes a template parameter, and never
     inside another type's arguments. *)
+(** Give a functor application's inductives the kind the functor's own body
+    gave them.
+
+    [Module FN := F N] does not alias [F]'s declarations: Rocq builds a second
+    copy of every inductive in the body, with a kernel name of its own, and
+    Crane classifies that copy independently.  The two answers can differ --
+    instantiation registers a class declared inside a functor in Rocq's type
+    class database while the body's own copy stays unregistered, so [F.Cl] is
+    a {!Record} and [FN.Cl] a {!TypeClass}.  One declaration with two kinds is
+    a disagreement every later reader inherits: the struct is emitted from the
+    body's copy, which is the one that exists in C++, while a call site
+    reading the instantiated copy treats its instances as template arguments
+    and spells [FN::template use<FN::inst>()].
+
+    The body's copy governs, being the one emitted.  Only the classification
+    is taken; the field references stay the instantiated copy's, as those are
+    the ones its projections are spelled with. *)
+let align_functor_instance_kinds struc =
+  (* Every module body's inductive kinds, keyed by the module's own path and
+     the inductive's label -- the pair a functor application can name. *)
+  let body_kinds : (string * Label.t, inductive_kind) Hashtbl.t =
+    Hashtbl.create 16
+  in
+  let rec body_of (me : Miniml.ml_module_expr) =
+    match me with MEfunctor (_, _, me) -> body_of me | me -> me
+  in
+  let rec collect_expr (me : Miniml.ml_module_expr) =
+    match me with
+    | MEstruct (mp, sel) ->
+      List.iter
+        (fun (l, se) ->
+          match se with
+          | SEdecl (Dind (_, ind)) ->
+            Hashtbl.replace body_kinds (ModPath.to_string mp, l) ind.ind_kind
+          | SEmodule m -> collect_expr (body_of m.ml_mod_expr)
+          | _ -> () )
+        sel
+    | MEfunctor (_, _, me) -> collect_expr me
+    | MEident _ | MEapply _ -> ()
+  in
+  (* The functor an application applies, however many arguments it takes. *)
+  let rec applied_functor (me : Miniml.ml_module_expr) =
+    match me with
+    | MEapply (me, _) -> applied_functor me
+    | MEident mp -> Some mp
+    | MEstruct _ | MEfunctor _ -> None
+  in
+  let align_sig mp_functor (mt : Miniml.ml_module_type) =
+    match mt with
+    | MTsig (_, sigl) ->
+      List.iter
+        (fun (l, sp) ->
+          match sp with
+          | Spec (Sind (kn, ind)) -> (
+            match
+              Hashtbl.find_opt body_kinds (ModPath.to_string mp_functor, l)
+            with
+            | Some body_kind -> (
+              let aligned =
+                match (body_kind, ind.ind_kind) with
+                | TypeClass _, Record fields -> Some (TypeClass fields)
+                | Record _, TypeClass fields -> Some (Record fields)
+                | _ -> None
+              in
+              match aligned with
+              | Some k ->
+                Table.add_inductive_kind kn k;
+                ind.ind_kind <- k
+              | None -> () )
+            | None -> () )
+          | Spec _ | Smodule _ | Smodtype _ -> () )
+        sigl
+    | MTident _ | MTfunsig _ | MTwith _ -> ()
+  in
+  let rec walk_expr (me : Miniml.ml_module_expr) =
+    match me with
+    | MEstruct (_, sel) -> List.iter walk_elem sel
+    | MEfunctor (_, _, me) -> walk_expr me
+    | MEident _ | MEapply _ -> ()
+  and walk_elem (_l, se) =
+    match se with
+    | SEmodule m ->
+      Option.iter
+        (fun mp -> align_sig mp m.ml_mod_type)
+        (applied_functor m.ml_mod_expr);
+      walk_expr m.ml_mod_expr
+    | SEdecl _ | SEmodtype _ -> ()
+  in
+  List.iter
+    (fun (_mp, sel) ->
+      List.iter
+        (fun (_l, se) ->
+          match se with
+          | SEmodule m -> collect_expr (body_of m.ml_mod_expr)
+          | _ -> () )
+        sel )
+    struc;
+  List.iter (fun (_mp, sel) -> List.iter walk_elem sel) struc
+
 let demote_value_typeclasses struc =
   let demoted = ref Mindmap_env.empty in
   let rec scan_arg t =
@@ -1243,6 +1342,7 @@ let print_structure_to_file ?(namespace = None) ?(unit_includes = [])
      what resolves a [Crane NonAtomicRc] request. *)
   Table.check_non_atomic_rc_request ();
   mark_higher_order_projections struc;
+  align_functor_instance_kinds struc;
   demote_value_typeclasses struc;
   (* Detect whether any custom inline function is applied to a string literal.
      This determines whether we need 'using namespace std::string_literals;'. *)

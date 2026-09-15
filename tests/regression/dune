@@ -130,6 +130,17 @@
   (deps dependent_elim_stdexcept_probe.t.exe)
   (action (run ./dependent_elim_stdexcept_probe.t.exe))))
 
+(subdir functor_local_class_template_kw
+ (rule
+  (targets functor_local_class_template_kw.t.exe)
+  (deps FunctorLocalClassTemplateKw.vo functor_local_class_template_kw.t.cpp (source_tree .))
+  (action
+   (run %{project_root}/scripts/compile-std.sh %{project_root} functor_local_class_template_kw.t.exe functor_local_class_template_kw.cpp functor_local_class_template_kw.t.cpp)))
+ (rule
+  (alias runtest)
+  (deps functor_local_class_template_kw.t.exe)
+  (action (run ./functor_local_class_template_kw.t.exe))))
+
 (subdir gadt_eval_branch_type
  (rule
   (targets gadt_eval_branch_type.t.exe)
@@ -9013,3 +9024,5 @@
   (alias runtest)
   (deps const_init_forward_ref.t.exe)
   (action (run ./const_init_forward_ref.t.exe))))
+
+

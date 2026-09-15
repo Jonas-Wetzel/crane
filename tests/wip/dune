@@ -111,14 +111,3 @@
   (deps cps_continuation_copy.t.exe)
   (action (run ./cps_continuation_copy.t.exe))))
 
-(subdir functor_local_class_template_kw
- (rule
-  (targets functor_local_class_template_kw.t.exe)
-  (deps FunctorLocalClassTemplateKw.vo functor_local_class_template_kw.t.cpp (source_tree .))
-  (action
-   (run %{project_root}/scripts/compile-std.sh %{project_root} functor_local_class_template_kw.t.exe functor_local_class_template_kw.cpp functor_local_class_template_kw.t.cpp)))
- (rule
-  (alias runtest)
-  (deps functor_local_class_template_kw.t.exe)
-  (action (run ./functor_local_class_template_kw.t.exe))))
-

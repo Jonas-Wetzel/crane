@@ -36,7 +36,7 @@ struct N {
 using FN = F<N>;
 
 struct FunctorLocalClassTemplateKw {
-  static inline const uint64_t run = FN::template use<FN::inst>();
+  static inline const uint64_t run = FN::use(FN::inst());
 };
 
 #endif // INCLUDED_FUNCTOR_LOCAL_CLASS_TEMPLATE_KW
