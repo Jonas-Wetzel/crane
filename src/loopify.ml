@@ -4891,6 +4891,20 @@ type machine_entry = {
   en_varying : bool list;  (** Mask over this entry's parameters *)
 }
 
+(** Everything one entry point contributes to the emitted machine: the frame
+    struct its callers push, that struct's pointer-safe mask, the parameters it
+    carries, and the handler the dispatch loop runs on popping one.
+
+    These five travel together -- a struct's fields, their types, their mask
+    and the handler that binds them all have to describe the same frame -- so
+    they are one record rather than five parallel lists indexed by position. *)
+type entry_emission = {
+  ee_id : Id.t;
+  ee_ps : bool list;
+  ee_params : (Id.t * cpp_type) list;
+  ee_body : cpp_stmt list;
+}
+
 (** The parameters the nontail frame-based transformation threads through its
     three mutually-recursive rewrite functions
     ({!rewrite_enter_lambda_return}, {!rewrite_enter_stmts},
@@ -7006,8 +7020,15 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
   let frame_ps_map =
     compute_frame_pointer_safe pointer_safe_varying frames
   in
+  (* One emission per entry point.  Loopifying a function on its own yields a
+     single one: the function itself, entered through [_Enter]. *)
+  let emissions =
+    [{ee_id = id_enter; ee_ps = pointer_safe_varying;
+      ee_params = varying_params; ee_body = rewritten_body}]
+  in
+  let ee_name ee = Id.to_string ee.ee_id in
   let all_frame_ps =
-    ("_Enter", pointer_safe_varying) :: frame_ps_map
+    List.map (fun ee -> (ee_name ee, ee.ee_ps)) emissions @ frame_ps_map
   in
   let frame_sptr =
     List.filter_map (fun cf ->
@@ -7016,7 +7037,7 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
       frames
   in
   (* Build struct definitions *)
-  let enter_fields =
+  let entry_fields ee =
     List.map2
       (fun safe (id, ty) ->
         match safe, borrowed_value_param_pointee ty with
@@ -7026,7 +7047,7 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
            in the struct field would prevent the struct from being
            move-assignable (breaks [std::variant] in some compilers). *)
         | _ -> (id, strip_ref_and_const_type ty))
-      pointer_safe_varying varying_params
+      ee.ee_ps ee.ee_params
   in
   let frame_description cf =
     let field_names_str =
@@ -7130,25 +7151,33 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
       frames
   in
   let call_names = List.map (fun cf -> cf.cf_name) frames in
-  let enter_ty = Tid_external (Id.to_string id_enter, []) in
   let variant_tys =
-    enter_ty
-    :: List.map (fun name -> Tid_external (name, [])) call_names
+    List.map (fun ee -> Tid_external (ee_name ee, [])) emissions
+    @ List.map (fun name -> Tid_external (name, [])) call_names
   in
   let struct_defs =
-    [Scomment "_Enter: captures varying parameters for each recursive call.";
-     Sstruct_def (id_enter, enter_fields)]
+    List.concat_map
+      (fun ee ->
+        [Scomment
+           (ee_name ee
+           ^ ": captures varying parameters for each recursive call.");
+         Sstruct_def (ee.ee_id, entry_fields ee)])
+      emissions
     @ call_structs
     @ [Susing (id_Frame, Tvariant variant_tys)]
   in
   let frame_field_types =
-    ("_Enter", List.map snd enter_fields)
-    :: List.map
+    List.map (fun ee -> (ee_name ee, List.map snd (entry_fields ee))) emissions
+    @ List.map
          (fun cf -> (cf.cf_name, compute_frame_field_types cf (frame_ps_for cf)))
          frames
   in
+  (* The machine is entered at its first entry point: that is the call the
+     caller made. *)
   let init_push =
-    make_stack_init ~pointer_safe:pointer_safe_varying varying_params
+    match emissions with
+    | ee :: _ -> make_stack_init ~pointer_safe:ee.ee_ps ee.ee_params
+    | [] -> CErrors.anomaly (Pp.str "loopify: frame machine with no entry point")
   in
   (* Identify varying params that are moved into the Enter handler (not passed
      as pointers).  For these, the Smatch scrutinee should use [v_mut()] so
@@ -7158,12 +7187,10 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
      Mirrors [make_param_copies.bind_field] exactly: use [strip_ref_type]
      (not [strip_ref_and_const_type]) so that [const T&] params (which are
      bound as [const T& id = _f.id], not moved) are excluded. *)
-  let owned_varying_names =
+  let owned_varying_names ee =
     let pairs =
-      if pointer_safe_varying = [] then
-        List.map (fun p -> (false, p)) varying_params
-      else
-        List.map2 (fun s p -> (s, p)) pointer_safe_varying varying_params
+      if ee.ee_ps = [] then List.map (fun p -> (false, p)) ee.ee_params
+      else List.map2 (fun s p -> (s, p)) ee.ee_ps ee.ee_params
     in
     List.filter_map
       (fun (safe, (id, ty)) ->
@@ -7177,30 +7204,34 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
           | _ -> None)
       pairs
   in
-  let rewritten_body =
-    if owned_varying_names = [] then rewritten_body
-    else make_owned_param_matches owned_varying_names rewritten_body
-  in
   (* Enter handler: copy frame fields to locals (only varying params; invariant
      params are captured directly from function scope) *)
-  let enter_field_keys =
-    List.filter_map (fun (id, ty) ->
-      if worthwhile_move_type (strip_ref_and_const_type ty)
-      then Some (frame_field_key id) else None)
-    enter_fields
+  let entry_branch ee =
+    let owned = owned_varying_names ee in
+    let body =
+      if owned = [] then ee.ee_body
+      else make_owned_param_matches owned ee.ee_body
+    in
+    let field_keys =
+      List.filter_map (fun (id, ty) ->
+        if worthwhile_move_type (strip_ref_and_const_type ty)
+        then Some (frame_field_key id) else None)
+      (entry_fields ee)
+    in
+    let is_cand key =
+      key = Id.to_string id_result || List.mem key field_keys
+    in
+    let handler =
+      make_param_copies ~pointer_safe:ee.ee_ps ee.ee_params
+      @ adjust_frame_push_args ~binding_env ~frame_sptr all_frame_ps body
+      |> optimize_frame_push_args frame_field_types
+      |> optimize_last_use_moves
+           ~self_ref_candidate:is_cand
+           ~last_use_candidate:is_cand
+    in
+    make_frame_branch (ee_name ee) handler
   in
-  let is_enter_cand key =
-    key = Id.to_string id_result || List.mem key enter_field_keys
-  in
-  let enter_body =
-    make_param_copies ~pointer_safe:pointer_safe_varying varying_params
-    @ adjust_frame_push_args ~binding_env ~frame_sptr all_frame_ps rewritten_body
-    |> optimize_frame_push_args frame_field_types
-    |> optimize_last_use_moves
-         ~self_ref_candidate:is_enter_cand
-         ~last_use_candidate:is_enter_cand
-  in
-  let enter_branch = make_frame_branch "_Enter" enter_body in
+  let enter_branches = List.map entry_branch emissions in
   (* Call handlers — fix pointer-safe field bindings, then adjust push args *)
   let call_branches =
     List.map
@@ -7247,7 +7278,7 @@ let transform_nontail ?(fn_name : string option) check tparams params ret_ty
   in
   let result =
     make_loop_and_return ?fn_name struct_defs ret_ty init_push
-      (enter_branch :: call_branches) ~frame_names:call_names
+      (enter_branches @ call_branches) ~frame_names:call_names
     |> unmove_invariant_params invariant_params
   in
   if Table.reuse () then borrow_frame_bound_matches result else result
