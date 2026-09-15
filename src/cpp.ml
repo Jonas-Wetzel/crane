@@ -608,8 +608,9 @@ let pp_template_param (mbid, mt) =
     keeps an ordinary [Dfun] whose reference happens to be a [VarRef] -- a
     record field accessor, a [make] factory -- from being mistaken for a
     helper and deduplicated against one. *)
-let lifted_decl_key = function
-  | Dtemplate (_, _, Dfun ([(r, _)], _, _, _)) | Dfun ([(r, _)], _, _, _) ->
+let rec lifted_decl_key = function
+  | Dtemplate (_, _, inner) -> lifted_decl_key inner
+  | Dfun {df_path = {dp_outer = r, []; dp_inner = []}; _} ->
     Option.map Lifted.name (Lifted.of_ref r)
   | _ -> None
 
@@ -1687,13 +1688,7 @@ let pp_wrapper_module_dual ~is_header ~wrapper_mp wrapper_name func_sels =
   List.iter
     (fun (_, defs, _) ->
       List.iter
-        (fun (ds, _env) ->
-          match ds with
-          | Dfun (names, ret_ty, _, Ddef (params, body)) ->
-            Loopify.register_fundef names ret_ty params body
-          | Dtemplate (_, _, Dfun (names, ret_ty, _, Ddef (params, body))) ->
-            Loopify.register_fundef names ret_ty params body
-          | _ -> () )
+        (fun (ds, _env) -> Loopify.register_decl ds)
         defs )
     all_results;
   let all_lifted =

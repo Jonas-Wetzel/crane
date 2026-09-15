@@ -3822,7 +3822,7 @@ let pp_meyers_singleton env id ty expr_pp =
     lists. *)
 let rec decl_body = function
   | Dtemplate (_, _, inner) -> decl_body inner
-  | Dfun (_, _, _, Ddef (params, body)) -> (params, body)
+  | Dfun {df_shape = Ddef (params, body); _} -> (params, body)
   | Dasgn (_, _, e) -> ([], [Sreturn (Some e)])
   | _ -> ([], [])
 
@@ -4015,7 +4015,8 @@ and pp_cpp_decl_raw env (settled : Cpp_erasure.settled) =
       ++ pending_fwd
       ++ fnl ()
       ++ str "};" )
-  | Dfun (ids, ret_ty, no_pure, shape) ->
+  | Dfun {df_path; df_ret = ret_ty; df_no_pure = no_pure; df_shape = shape} ->
+    let ids = dfun_path_list df_path in
     (* A definition is either out-of-line in a .cpp file or inline in a
        template struct; a declaration is always the forward declaration of an
        out-of-line definition.  That is the whole difference between the two
@@ -4038,7 +4039,7 @@ and pp_cpp_decl_raw env (settled : Cpp_erasure.settled) =
         ids
     in
     let is_lifted =
-      match ids with (GlobRef.VarRef _, _) :: _ -> true | _ -> false
+      match fst df_path.dp_outer with GlobRef.VarRef _ -> true | _ -> false
     in
     let name =
       match (!render_ctx).rc_struct_name with
@@ -4047,9 +4048,11 @@ and pp_cpp_decl_raw env (settled : Cpp_erasure.settled) =
         struct_name ++ str "::" ++ base_name
       | _ -> base_name
     in
+    (* Anything the name says beyond a bare identifier -- a [::] qualifier or
+       an explicit template argument list -- means it is being written from
+       outside the struct that declares it. *)
     let is_qualified =
-      List.length ids > 1
-      || match ids with [(_, tys)] when tys <> [] -> true | _ -> false
+      df_path.dp_inner <> [] || snd df_path.dp_outer <> []
     in
     let is_struct_member = is_qualified || (!render_ctx).rc_in_struct in
     let is_out_of_struct_def =

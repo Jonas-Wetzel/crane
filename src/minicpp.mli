@@ -891,14 +891,7 @@ type cpp_decl =
           declaration *)
   | Dnspace of GlobRef.t option * cpp_decl list
       (** Namespace with optional reference and declarations *)
-  | Dfun of
-      (GlobRef.t * cpp_type list) list
-      * cpp_type
-      * bool
-      * dfun_shape
-      (** Function: names with type args, return type, a flag suppressing
-          pure/constexpr (monadic functions, axiom stubs), and either a
-          definition or a forward declaration. *)
+  | Dfun of dfun
   | Dstruct of dstruct
   | Dasgn of GlobRef.t * cpp_type * cpp_expr
       (** Global variable definition with initializer *)
@@ -954,6 +947,31 @@ and dusing = {
   du_note : string option;
 }
 
+(** A function declaration or definition. *)
+and dfun = {
+  df_path : dfun_path;  (** The [::]-separated name it is written under *)
+  df_ret : cpp_type;
+  df_no_pure : bool;
+      (** Suppress [__attribute__((pure))] / [constexpr]: monadic functions
+          and axiom stubs are neither. *)
+  df_shape : dfun_shape;
+}
+
+(** The qualified name a function is written under.
+
+    [Type<T>::make] is two entries and an ordinary function is one, so this
+    used to be a list -- but a function always has a name, and the empty list
+    was a state three readers had to invent an answer for.  Splitting off the
+    first entry makes it unrepresentable. *)
+and dfun_path = {
+  dp_outer : GlobRef.t * cpp_type list;
+      (** The first name written.  For a plain function that is the function
+          itself; for a member it is the type qualifying it, which is also
+          what a [Crane Loopify] directive names. *)
+  dp_inner : (GlobRef.t * cpp_type list) list;
+      (** Any further names, innermost last. *)
+}
+
 (** What a {!Dfun} node holds beyond its signature.
 
     A definition names every parameter -- it has a body that refers to them --
@@ -965,6 +983,39 @@ and dfun_shape =
       (** Definition: named parameters and a body. *)
   | Ddecl of (Id.t option * cpp_type) list
       (** Forward declaration: parameters, possibly anonymous. *)
+
+(** The [GlobRef.t] a declaration is about, if it has one: what a [Crane
+    Loopify] directive names, and what tells two hoisted helpers apart.
+
+    For a function this is the outermost entry of its qualified name, so a
+    method [Type::make] answers with [Type] -- which is the reference a user
+    has to hang a directive on, the method itself having no Rocq name. *)
+val decl_globref : cpp_decl -> GlobRef.t option
+
+(** [dfun_path ?inner outer] is the qualified name [outer::inner...]. *)
+val dfun_path :
+  ?inner:(GlobRef.t * cpp_type list) list ->
+  GlobRef.t * cpp_type list ->
+  dfun_path
+
+(** [dfun_path_of_list l] is [l] read as a qualified name.  Raises if [l] is
+    empty; prefer {!dfun_path}, which cannot be handed one. *)
+val dfun_path_of_list : (GlobRef.t * cpp_type list) list -> dfun_path
+
+(** The entries of a qualified name, outermost first. *)
+val dfun_path_list : dfun_path -> (GlobRef.t * cpp_type list) list
+
+(** [mk_dfun ?inner ?targs ?no_pure ~ret r shape] is the function named [r]
+    (qualified under [inner], if given), which is how all but one caller
+    builds one. *)
+val mk_dfun :
+  ?inner:(GlobRef.t * cpp_type list) list ->
+  ?targs:cpp_type list ->
+  ?no_pure:bool ->
+  ret:cpp_type ->
+  GlobRef.t ->
+  dfun_shape ->
+  dfun
 
 (** [map_field fe fs ft f] applies [fe] to sub-expressions, [fs] to
     sub-statements and [ft] to sub-types of a visibility-annotated field,

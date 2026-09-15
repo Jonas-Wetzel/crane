@@ -138,13 +138,7 @@ let impl_decls = function
          Without this, the first function rendered can't see the second in the
          mutual table, so mutual inlining fails. *)
       List.iter
-        (fun (ds, _env, _) ->
-          match ds with
-          | Dfun (names, ret_ty, _, Ddef (params, body)) ->
-            Loopify.register_fundef names ret_ty params body
-          | Dtemplate (_, _, Dfun (names, ret_ty, _, Ddef (params, body))) ->
-            Loopify.register_fundef names ret_ty params body
-          | _ -> () )
+        (fun (ds, _env, _) -> Loopify.register_decl ds)
         defs;
       List.map (fun (ds, env, _) -> (env, ds)) defs
 

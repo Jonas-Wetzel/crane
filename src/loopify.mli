@@ -37,6 +37,14 @@ val register_fundef :
   cpp_stmt list ->
   unit
 
+(** [register_decl d] registers [d] with {!register_fundef} if it is a
+    function definition, and does nothing otherwise.
+
+    Callers pre-register a whole group of declarations before rendering any of
+    them, so that the first one rendered can already see the last one in the
+    mutual table. *)
+val register_decl : cpp_decl -> unit
+
 (** Clear the mutual-recursion registry populated by {!register_fundef}. The
     registry is scoped to one compilation unit, so callers reset it at each
     unit boundary before repopulating it. *)

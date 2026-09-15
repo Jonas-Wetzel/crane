@@ -1129,11 +1129,7 @@ let fold_stmt_children ~on_expr ~on_stmts (acc : 'a) (s : cpp_stmt) : 'a =
 type cpp_decl =
   | Dtemplate of (template_type * Id.t) list * cpp_constraint option * cpp_decl
   | Dnspace of GlobRef.t option * cpp_decl list
-  | Dfun of
-      (GlobRef.t * cpp_type list) list
-      * cpp_type
-      * bool (* no_pure: suppress __attribute__((pure)) / constexpr *)
-      * dfun_shape
+  | Dfun of dfun
   | Dstruct of dstruct
   | Dasgn of GlobRef.t * cpp_type * cpp_expr
   | Dconcept of
@@ -1184,6 +1180,31 @@ and dusing = {
   du_note : string option;
 }
 
+(** A function declaration or definition. *)
+and dfun = {
+  df_path : dfun_path;  (** The [::]-separated name it is written under *)
+  df_ret : cpp_type;
+  df_no_pure : bool;
+      (** Suppress [__attribute__((pure))] / [constexpr]: monadic functions
+          and axiom stubs are neither. *)
+  df_shape : dfun_shape;
+}
+
+(** The qualified name a function is written under.
+
+    [Type<T>::make] is two entries and an ordinary function is one, so this
+    used to be a list -- but a function always has a name, and the empty list
+    was a state three readers had to invent an answer for.  Splitting off the
+    first entry makes it unrepresentable. *)
+and dfun_path = {
+  dp_outer : GlobRef.t * cpp_type list;
+      (** The first name written.  For a plain function that is the function
+          itself; for a member it is the type qualifying it, which is also
+          what a [Crane Loopify] directive names. *)
+  dp_inner : (GlobRef.t * cpp_type list) list;
+      (** Any further names, innermost last. *)
+}
+
 (** What a {!Dfun} node holds beyond its signature.
 
     A definition names every parameter -- it has a body that refers to them --
@@ -1200,6 +1221,43 @@ and dfun_shape =
     sub-statements and [ft] to sub-types of a visibility-annotated field,
     performing one level of structural descent.  Nested structs recurse, so
     that a caller need only supply the three leaf functions. *)
+(** The [GlobRef.t] a declaration is about, if it has one: what a [Crane
+    Loopify] directive names, and what tells two hoisted helpers apart.
+
+    For a function this is the outermost entry of its qualified name, so a
+    method [Type::make] answers with [Type] -- which is the reference a user
+    has to hang a directive on, the method itself having no Rocq name. *)
+let rec decl_globref = function
+  | Dtemplate (_, _, inner) -> decl_globref inner
+  | Dfun f -> Some (fst f.df_path.dp_outer)
+  | Dstruct ds -> Some ds.ds_ref
+  | Dnspace (r, _) -> r
+  | _ -> None
+
+(** [dfun_path ?inner outer] is the qualified name [outer::inner...]. *)
+let dfun_path ?(inner = []) outer = {dp_outer = outer; dp_inner = inner}
+
+(** [dfun_path_of_list l] is [l] read as a qualified name.  Raises if [l] is
+    empty; prefer {!dfun_path}, which cannot be handed one. *)
+let dfun_path_of_list = function
+  | outer :: inner -> dfun_path ~inner outer
+  | [] ->
+    CErrors.anomaly (Pp.str "Minicpp.dfun_path_of_list: a function has a name")
+
+(** The entries of a qualified name, outermost first. *)
+let dfun_path_list p = p.dp_outer :: p.dp_inner
+
+(** [mk_dfun ?inner ?targs ?no_pure ~ret r shape] is the function named [r]
+    (qualified under [inner], if given), which is how all but one caller
+    builds one. *)
+let mk_dfun ?inner ?(targs = []) ?(no_pure = false) ~ret r shape =
+  {
+    df_path = dfun_path ?inner (r, targs);
+    df_ret = ret;
+    df_no_pure = no_pure;
+    df_shape = shape;
+  }
+
 let rec map_field
     (fe : cpp_expr -> cpp_expr)
     (fs : cpp_stmt -> cpp_stmt)
@@ -1250,18 +1308,23 @@ let rec map_decl
   | Dtemplate (tps, constr, inner) ->
     Dtemplate (tps, Option.map fe constr, map_decl fe fs ft inner)
   | Dnspace (r, decls) -> Dnspace (r, List.map (map_decl fe fs ft) decls)
-  | Dfun (names, ret, no_pure, shape) ->
+  | Dfun f ->
     let shape' =
-      match shape with
+      match f.df_shape with
       | Ddef (ps, body) ->
         Ddef (List.map (fun (id, ty) -> (id, ft ty)) ps, List.map fs body)
       | Ddecl ps -> Ddecl (List.map (fun (id, ty) -> (id, ft ty)) ps)
     in
+    let name (r, tys) = (r, List.map ft tys) in
     Dfun
-      ( List.map (fun (r, tys) -> (r, List.map ft tys)) names,
-        ft ret,
-        no_pure,
-        shape' )
+      { f with
+        df_path =
+          {
+            dp_outer = name f.df_path.dp_outer;
+            dp_inner = List.map name f.df_path.dp_inner;
+          };
+        df_ret = ft f.df_ret;
+        df_shape = shape' }
   | Dstruct s -> Dstruct (map_dstruct fe fs ft s)
   | Dasgn (r, ty, e) -> Dasgn (r, ft ty, fe e)
   | Dconcept (r, e) -> Dconcept (r, fe e)

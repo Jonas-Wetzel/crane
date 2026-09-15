@@ -6,15 +6,6 @@
 open Minicpp
 open Names
 
-(** The primary [GlobRef.t] a declaration is about, if it has one.  This is
-    what a [Crane Loopify] directive names. *)
-let rec decl_globref = function
-  | Dtemplate (_, _, inner) -> decl_globref inner
-  | Dfun ((r, _) :: _, _, _, _) -> Some r
-  | Dstruct ds -> Some ds.ds_ref
-  | Dnspace (Some r, _) -> Some r
-  | _ -> None
-
 (** Whether [decl] is loopified, given what the user asked for. *)
 let should_loopify decl =
   match decl_globref decl with

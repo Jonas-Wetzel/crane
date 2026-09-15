@@ -318,32 +318,26 @@ let get_param_type_by_index (idx : int) : ml_type option =
 let clear_current_param_types () =
   tctx := { !tctx with current_param_types = [] }
 
-(** The defining [GlobRef.t] of a lifted declaration, if it has one.
-    Used by {!add_lifted_decl} to deduplicate identical hoisted helpers. *)
-let lifted_decl_ref = function
-  | Dtemplate (_, _, Dfun ((r, _) :: _, _, _, _)) -> Some r
-  | Dfun ((r, _) :: _, _, _, _) -> Some r
-  | _ -> None
-
 (** Enqueue a declaration to be lifted to the enclosing scope.
     Skips duplicate declarations (same GlobRef) so that identical helpers
     (e.g. [_index_eq_dec_F]) are only emitted once per file even when
     multiple functions in the same module use them. *)
 let add_lifted_decl (d : cpp_decl) =
-  let is_dup =
-    match lifted_decl_ref d with
-    | None -> false
+  let keep =
+    match decl_globref d with
+    | None -> true
     | Some r ->
-      List.exists (globref_equal r) (!tctx).output.seen_lifted_refs
+      let fresh =
+        not (List.exists (globref_equal r) (!tctx).output.seen_lifted_refs)
+      in
+      if fresh then
+        update_output (fun o ->
+            {o with seen_lifted_refs = r :: o.seen_lifted_refs} );
+      fresh
   in
-  if not is_dup then begin
-    ( match lifted_decl_ref d with
-    | Some r ->
-      update_output (fun o -> { o with seen_lifted_refs = r :: o.seen_lifted_refs })
-    | None -> () );
+  if keep then
     update_output (fun o ->
-        { o with pending_lifted_decls = d :: o.pending_lifted_decls })
-  end
+        {o with pending_lifted_decls = d :: o.pending_lifted_decls} )
 
 (** Drain and return the pending lifted declarations in definition order. *)
 let take_lifted_decls () =

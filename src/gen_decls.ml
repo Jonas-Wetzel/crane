@@ -72,10 +72,10 @@ let gen_ind_cpp ?(consarg_names = [||]) vars name cnames tys =
            let ty_vars = List.mapi (fun i x -> Tvar (i, Some x)) vars in
            let make =
              Dfun
-               ( [(c, []); (GlobRef.VarRef (Id.of_string "make"), [])],
-                 Tshared_ptr (Tglob (name, ty_vars, [])),
-                 false,
-                 Ddef
+               (mk_dfun c
+                  ~inner:[(GlobRef.VarRef (Id.of_string "make"), [])]
+                  ~ret:(Tshared_ptr (Tglob (name, ty_vars, [])))
+                 (Ddef
                    ( List.rev constr,
                      [
                        Sreturn
@@ -84,7 +84,7 @@ let gen_ind_cpp ?(consarg_names = [||]) vars name cnames tys =
                                (CPPalloc
                                   (Alloc_heap, Tglob (name, ty_vars, [])))
                                [CPPstruct (c, ty_vars, make_args)] ) );
-                     ] ) )
+                     ] ) ) )
            in
            (ty_vars == [], make) )
          tys )
@@ -1717,7 +1717,7 @@ let relax_applied_return temps decl =
     exists_cpp_type (function Tapply (Tvar _, _) -> true | _ -> false) t
   in
   match decl with
-  | Dfun (ns, cod0, flags, Ddef (params, body)) when applies_tvar cod0 ->
+  | Dfun {df_ret = cod0; df_shape = Ddef (params, _); _} when applies_tvar cod0 ->
     (* The head of a tvar is not always resolved to its parameter name, so a
        tvar answers to either spelling; cf. {!applied_tvar_arities}. *)
     let is_tvar id = function
@@ -1765,7 +1765,7 @@ let relax_applied_return temps decl =
         temps
       @ computed
     in
-    (temps, Dfun (ns, cod0, flags, Ddef (params, body)))
+    (temps, decl)
   | _ -> (temps, decl)
 
 (** Build template parameter list with phantom detection.
@@ -2837,13 +2837,11 @@ let gen_dfun n b cty ty temps =
       clear_current_type_vars ();
       clear_current_param_types ();
       Dfun
-        ( [(n, [])],
-          cod,
-          no_pure,
-          Ddef
-            ( ids,
-              dead_unit_returns_to_abort cod
-                (erase_returned_fn_values cod (guard @ sigma_asserts @ b)) ) ) )
+        (mk_dfun n ~ret:cod ~no_pure
+           (Ddef
+              ( ids,
+                dead_unit_returns_to_abort cod
+                  (erase_returned_fn_values cod (guard @ sigma_asserts @ b)) ) ) ) )
     else
       (* Eta-expansion: the body 'b' references original params starting at
          MLrel 1. After adding k=|missing| new params to the environment, the
@@ -2891,13 +2889,11 @@ let gen_dfun n b cty ty temps =
       clear_current_type_vars ();
       clear_current_param_types ();
       Dfun
-        ( [(n, [])],
-          cod,
-          no_pure,
-          Ddef
-            ( ids,
-              dead_unit_returns_to_abort cod
-                (erase_returned_fn_values cod (guard @ sigma_asserts @ b)) ) )
+        (mk_dfun n ~ret:cod ~no_pure
+           (Ddef
+              ( ids,
+                dead_unit_returns_to_abort cod
+                  (erase_returned_fn_values cod (guard @ sigma_asserts @ b)) ) ) )
   in
   tctx := { !tctx with current_cpp_return_type = saved_return_type };
   Table.current_decl_ref := saved_decl_ref;
@@ -2969,8 +2965,11 @@ let gen_dfun n b cty ty temps =
             | s -> s
           in
           ( match inner with
-          | Dfun (names, _cod, flags, Ddef (params, body)) ->
-            Dfun (names, int_ty, flags, Ddef (params, List.map void_return_to_zero body))
+          | Dfun ({df_shape = Ddef (params, body); _} as f) ->
+            Dfun
+              { f with
+                df_ret = int_ty;
+                df_shape = Ddef (params, List.map void_return_to_zero body) }
           | d -> d )
         | None, true ->
           (* Case 3: top-level reified — rename to [_main], register for
@@ -2979,8 +2978,7 @@ let gen_dfun n b cty ty temps =
           let new_n = GlobRef.ConstRef (Constant.make2 (Constant.modpath c) new_label) in
           Table.set_main_function (Id.of_string "_main") (ml_codomain ty) None needs_run;
           ( match inner with
-          | Dfun (_, cod, flags, Ddef (params, body)) ->
-            Dfun ([(new_n, [])], cod, flags, Ddef (params, body))
+          | Dfun f -> Dfun {f with df_path = dfun_path (new_n, [])}
           | d -> d )
       end else
         inner
@@ -3048,7 +3046,7 @@ let gen_sfun n b dom cod temps =
     else
       ids
   in
-  let inner = Dfun ([(n, [])], cod, false, Ddecl params) in
+  let inner = Dfun (mk_dfun n ~ret:cod (Ddecl params)) in
   match temps with
   | [] -> (inner, env)
   | l -> (Dtemplate (l, None, inner), env)
@@ -3202,7 +3200,7 @@ let gen_decl__inner n b ty =
          happens when the value is asked for rather than during static
          initialisation (which terminates the program before main). *)
       let body_expr = gen_expr (empty_env ()) b in
-      let inner = Dfun ([(n, [])], cty, false, Ddef ([], [Sreturn (Some body_expr)])) in
+      let inner = Dfun (mk_dfun n ~ret:cty (Ddef ([], [Sreturn (Some body_expr)]))) in
       ( match temps with
       | [] -> (inner, empty_env (), tvars)
       | l -> (Dtemplate (l, None, inner), empty_env (), tvars) )
@@ -3296,7 +3294,7 @@ let gen_decl_for_pp__inner n b ty =
     (* A body that only throws: a zero-arg function, so it throws when called
        and not at static init time. *)
     let body_expr = gen_expr (empty_env ()) b in
-    let inner = Dfun ([(n, [])], cty, false, Ddef ([], [Sreturn (Some body_expr)])) in
+    let inner = Dfun (mk_dfun n ~ret:cty (Ddef ([], [Sreturn (Some body_expr)]))) in
     let ds =
       match temps with
       | [] -> inner
@@ -3391,7 +3389,7 @@ let gen_spec__inner n b ty =
     match b with
     | _ when only_throws b ->
       (* Throws when called, so: a zero-arg function declaration. *)
-      let inner = Dfun ([(n, [])], ty, false, Ddef ([], [])) in
+      let inner = Dfun (mk_dfun n ~ret:ty (Ddef ([], []))) in
       ( match temps with
       | [] -> (inner, empty_env ())
       | l -> (Dtemplate (l, None, inner), empty_env ()) )
@@ -3512,15 +3510,15 @@ let gen_dfuns (ns, bs, tys) =
     constraints). *)
 let rec decl_to_spec (d : cpp_decl) : cpp_decl =
   match d with
-  | Dfun (ids, ret_ty, no_pure, Ddef (params, body)) ->
-    let no_pure = no_pure ||
-      match body with
-      | [Sreturn (Some (CPPabort _))] -> true
-      | _ -> false
+  | Dfun ({df_shape = Ddef (params, body); _} as f) ->
+    let no_pure =
+      f.df_no_pure
+      || match body with [Sreturn (Some (CPPabort _))] -> true | _ -> false
     in
     Dfun
-      ( ids, ret_ty, no_pure,
-        Ddecl (List.map (fun (id, ty) -> (Some id, ty)) params) )
+      { f with
+        df_no_pure = no_pure;
+        df_shape = Ddecl (List.map (fun (id, ty) -> (Some id, ty)) params) }
   | Dtemplate (temps, cstr, inner) -> Dtemplate (temps, cstr, decl_to_spec inner)
   | _ -> d (* Already a declaration, return as-is *)
 

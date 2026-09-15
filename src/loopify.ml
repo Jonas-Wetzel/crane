@@ -332,6 +332,18 @@ let register_fundef
     (fun (r, _) -> Hashtbl.replace mutual_fn_table r {rf_ret_ty = ret_ty; rf_params = params; rf_body = body})
     refs
 
+(** [register_decl d] registers [d] with {!register_fundef} if it is a
+    function definition, and does nothing otherwise.
+
+    Callers pre-register a whole group of declarations before rendering any of
+    them, so that the first one rendered can already see the last one in the
+    mutual table. *)
+let register_decl = function
+  | Dfun {df_path; df_ret; df_shape = Ddef (params, body)}
+  | Dtemplate (_, _, Dfun {df_path; df_ret; df_shape = Ddef (params, body)}) ->
+    register_fundef (dfun_path_list df_path) df_ret params body
+  | _ -> ()
+
 (** Clear the mutual recursion table. Called between extraction units. *)
 let clear_mutual_table () = Hashtbl.clear mutual_fn_table
 
@@ -8992,19 +9004,16 @@ let hoist_rec_conditions (check : call_checker)
     hs stmts
 
 (** The name to show for a [Dfun] in the loopification report: the label of
-    the first reference it defines, if it defines any. *)
-let fundef_display_name names =
-  match names with
-  | (r, _) :: _ ->
-    let label =
-      match r with
-      | GlobRef.ConstRef c -> Label.to_id (Constant.label c)
-      | GlobRef.IndRef (ind, _) -> Label.to_id (MutInd.label ind)
-      | GlobRef.ConstructRef ((ind, _), _) -> Label.to_id (MutInd.label ind)
-      | GlobRef.VarRef v -> v
-    in
-    Some (Id.to_string label)
-  | [] -> None
+    the outermost reference of its qualified name. *)
+let fundef_display_name path =
+  let label =
+    match fst path.dp_outer with
+    | GlobRef.ConstRef c -> Label.to_id (Constant.label c)
+    | GlobRef.IndRef (ind, _) -> Label.to_id (MutInd.label ind)
+    | GlobRef.ConstructRef ((ind, _), _) -> Label.to_id (MutInd.label ind)
+    | GlobRef.VarRef v -> v
+  in
+  Id.to_string label
 
 (** Transform a top-level function definition by loopifying its body.
 
@@ -9029,16 +9038,15 @@ let fundef_display_name names =
     pass.  See the {!has_lazy_body} section header for the full rationale.
 
                      passes and [decltype] generation)
-    @param tparams   Template parameters of the enclosing declaration
-    @param names     List of [(GlobRef.t, type_args)] pairs identifying this
-                     function — supports mutual fixpoint groups with multiple refs
-    @param ret_ty    Return type of the function
-    @param params    Parameter list [(Id.t * cpp_type)]
-    @param body      Original function body (statement list)
-    @param no_pure   Whether the function is marked [no_pure] (passed through
-                     to the [Dfun] node unchanged)
+    @param tparams Template parameters of the enclosing declaration
+    @param f       The function node; everything but its body is passed
+                   through to the result unchanged
+    @param params  Parameter list [(Id.t * cpp_type)]
+    @param body    Original function body (statement list)
     @return A [Dfun] declaration with the loopified body *)
-let transform_fundef_exn ~tparams names ret_ty params body no_pure =
+let transform_fundef_exn ~tparams (f : dfun) params body =
+  let names = dfun_path_list f.df_path in
+  let ret_ty = f.df_ret in
   (* Register this function for mutual recursion detection *)
   register_fundef names ret_ty params body;
   (* Try to inline mutual recursion partners *)
@@ -9059,8 +9067,7 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
      the full rationale).  We still run [loopify_inner_lambdas] to handle
      any nested [std::function] fixpoints inside the lazy thunk. *)
   let body =
-    let fn_name = fundef_display_name names in
-    let name = match fn_name with Some s -> s | None -> "<anonymous>" in
+    let name = fundef_display_name f.df_path in
     if has_lazy_body body || body_contains_lazy_factory body then begin
       if classify check body <> No_recursion then
         record_outcome name (Lp_deferred "cofixpoint body is lazy_-wrapped");
@@ -9088,7 +9095,7 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
           (transform_tail check params ret_ty body, Some Lp_tail)
         | Nontail_recursion ->
           let r =
-            apply_nontail_loopification ?fn_name ?adopted check tparams
+            apply_nontail_loopification ~fn_name:name ?adopted check tparams
               params ret_ty body
           in
           (r.nt_body, Some r.nt_outcome)
@@ -9103,21 +9110,17 @@ let transform_fundef_exn ~tparams names ret_ty params body no_pure =
        | None -> body
        | Some s -> report_outcome ?survived ~name ~check ~strategy:s body)
   in
-  Dfun (names, ret_ty, no_pure, Ddef (params, body))
+  Dfun {f with df_shape = Ddef (params, body)}
 
 (** {!transform_fundef_exn}, but a {!Not_linearisable} raised anywhere inside a
     transform is turned into a decline for this one function: the original body
     is emitted unchanged and the outcome is recorded, so a shape the pass cannot
     linearise never aborts the surrounding extraction. *)
-let transform_fundef ~tparams names ret_ty params body no_pure =
-  try
-    transform_fundef_exn ~tparams names ret_ty params body
-      no_pure
+let transform_fundef ~tparams (f : dfun) params body =
+  try transform_fundef_exn ~tparams f params body
   with Not_linearisable reason ->
-    record_outcome
-      (Option.default "<anonymous>" (fundef_display_name names))
-      (Lp_declined reason);
-    Dfun (names, ret_ty, no_pure, Ddef (params, body))
+    record_outcome (fundef_display_name f.df_path) (Lp_declined reason);
+    Dfun {f with df_shape = Ddef (params, body)}
 
 (** Transform a struct method by loopifying its body.
 
@@ -9455,8 +9458,8 @@ let rec transform_decl ?(tparams = []) = function
   | Dtemplate (tparams, constraint_opt, inner) ->
     Dtemplate
       (tparams, constraint_opt, transform_decl ~tparams inner)
-  | Dfun (names, ret_ty, no_pure, Ddef (params, body)) ->
-    transform_fundef ~tparams names ret_ty params body no_pure
+  | Dfun ({df_shape = Ddef (params, body); _} as f) ->
+    transform_fundef ~tparams f params body
   | Dstruct ds ->
     (* Name the struct's own template arguments: inside a nested inductive the
        receiver type is spelled through its module ([typename List::template
@@ -9510,13 +9513,6 @@ let rec transform_decl ?(tparams = []) = function
   | Dnspace (r, decls) ->
     (* Pre-register all functions for mutual recursion detection before
        transforming *)
-    List.iter
-      (function
-        | Dfun (names, ret_ty, _, Ddef (params, body)) ->
-          register_fundef names ret_ty params body
-        | Dtemplate (_, _, Dfun (names, ret_ty, _, Ddef (params, body))) ->
-          register_fundef names ret_ty params body
-        | _ -> () )
-      decls;
+    List.iter register_decl decls;
     Dnspace (r, List.map (transform_decl ~tparams) decls)
   | d -> d

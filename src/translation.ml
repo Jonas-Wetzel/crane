@@ -12302,7 +12302,7 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
               (List.map (fun id -> Tvar (0, Some id)) all_tvar_names)
           in
           let body = List.map (local_var_subst_stmt renamed_id rec_call) body in
-          let inner = Dfun ([(lifted_ref, [])], cod, false, Ddef (cpp_params, body)) in
+          let inner = Dfun (mk_dfun ~ret:cod lifted_ref (Ddef (cpp_params, body))) in
           let lifted_decl = Dtemplate (all_temps_with_funs, None, inner) in
           add_lifted_decl lifted_decl )
         funs_compiled;
@@ -12892,7 +12892,7 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
 
         (* 9. Build and register the lifted declaration *)
         let inner =
-          Dfun ([(lifted_ref, [])], cod, false, Ddef (cpp_params, compiled_body))
+          Dfun (mk_dfun ~ret:cod lifted_ref (Ddef (cpp_params, compiled_body)))
         in
         let lifted_decl = Dtemplate (all_temps_with_funs, None, inner) in
         add_lifted_decl lifted_decl;
@@ -13317,7 +13317,7 @@ and gen_stmts ?(slot = empty_slot) env (k : cpp_expr -> cpp_stmt) ast =
               (List.map (fun id -> Tvar (0, Some id)) all_tvar_names)
           in
           let body = List.map (local_var_subst_stmt renamed_id rec_call) body in
-          let inner = Dfun ([(lifted_ref, [])], cod, false, Ddef (cpp_params, body)) in
+          let inner = Dfun (mk_dfun ~ret:cod lifted_ref (Ddef (cpp_params, body))) in
           let lifted_decl = Dtemplate (all_temps_with_funs, None, inner) in
           add_lifted_decl lifted_decl )
         funs_compiled;
